@@ -33,6 +33,31 @@ lint:
 .PHONY: all
 all: fmt vet test build
 
+BPF_DIR=bpf
+
+.PHONY: bpf
+bpf:
+	docker run --rm \
+		-v $(PWD)/$(BPF_DIR):/$(BPF_DIR) \
+		-w /$(BPF_DIR) \
+		gcc:latest \
+		bash -c "apt-get update -qq && apt-get install -y -qq clang llvm libbpf-dev > /dev/null 2>&1 && \
+		clang -O2 -g -target bpf -D__TARGET_ARCH_x86 \
+			-I/usr/include \
+			-c /$(BPF_DIR)/tcp_connect.bpf.c -o /$(BPF_DIR)/tcp_connect.bpf.o && \
+		llvm-strip -g /$(BPF_DIR)/tcp_connect.bpf.o"
+	cp $(BPF_DIR)/tcp_connect.bpf.o internal/flow/tcp_connect.bpf.o
+
+.PHONY: vmlinux
+vmlinux:
+	docker run --rm \
+		-v /sys/kernel/btf:/sys/kernel/btf:ro \
+		-v $(PWD)/$(BPF_DIR):/$(BPF_DIR) \
+		--pid=host --privileged \
+		ubuntu:latest \
+		bash -c "apt-get update -qq && apt-get install -y -qq bpftool > /dev/null 2>&1 && \
+		bpftool btf dump file /sys/kernel/btf/vmlinux format c > /$(BPF_DIR)/vmlinux.h"
+
 .PHONY: install
 install: build
 	cp bin/$(BINARY_NAME) $(GOPATH)/bin/$(BINARY_NAME)
@@ -57,6 +82,11 @@ kind-status:
 .PHONY: kind-apply
 kind-apply:
 	kubectl apply -f deploy/test-deployment.yaml
+
+.PHONY: kind-flows
+kind-flows:
+	$(MAKE) install
+	kubectl detective flows
 
 .PHONY: help
 help:

@@ -1,0 +1,198 @@
+package flow
+
+import (
+	"bytes"
+	_ "embed"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"os/exec"
+	"os/signal"
+	"strings"
+
+	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
+	"github.com/cilium/ebpf/ringbuf"
+	"github.com/cilium/ebpf/rlimit"
+)
+
+var ErrNoPrivileges = errors.New("eBPF requires privileges")
+
+//go:embed tcp_connect.bpf.o
+var bpfObj []byte
+
+type FlowEvent struct {
+	SrcIP   net.IP
+	DstIP   net.IP
+	SrcPort uint16
+	DstPort uint16
+	PID     uint32
+	Comm    string
+}
+
+func RunInKind() error {
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("eBPF requires privileges but cannot detect binary path: %w", err)
+	}
+
+	if _, err := exec.LookPath("docker"); err != nil {
+		return fmt.Errorf("eBPF requires privileges: run inside kind node, or use: sudo setcap cap_bpf,cap_net_admin,cap_perfmon,cap_ipc_lock+eip %s", self)
+	}
+
+	nodes, err := listKindNodes()
+	if err != nil || len(nodes) == 0 {
+		return fmt.Errorf("kind cluster not found: start a kind cluster and try again, or use: sudo setcap cap_bpf,cap_net_admin,cap_perfmon,cap_ipc_lock+eip %s", self)
+	}
+
+	data, err := os.ReadFile(self)
+	if err != nil {
+		return fmt.Errorf("read binary: %w", err)
+	}
+
+	lastErr := errors.New("no reachable kind nodes")
+	for _, node := range nodes {
+		if err := copyToNode(node, data); err != nil {
+			lastErr = err
+			continue
+		}
+		cmd := exec.Command("docker", "exec", "-i", node, "/usr/local/bin/kubectl-detective", "flows")
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+	return lastErr
+}
+
+func copyToNode(node string, data []byte) error {
+	cmd := exec.Command("docker", "exec", "-i", node, "sh", "-c",
+		"rm -f /usr/local/bin/kubectl-detective && cat > /usr/local/bin/kubectl-detective && chmod +x /usr/local/bin/kubectl-detective")
+	cmd.Stdin = bytes.NewReader(data)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("copy to %s: %w\n%s", node, err, string(out))
+	}
+	return nil
+}
+
+func listKindNodes() ([]string, error) {
+	labels := []string{
+		"io.x-k8s.kind.role",
+	}
+	for _, label := range labels {
+		out, err := exec.Command("docker", "ps", "--filter", "label="+label, "--format", "{{.Names}}").Output()
+		if err != nil {
+			continue
+		}
+		nodes := strings.Fields(string(out))
+		if len(nodes) > 0 {
+			return nodes, nil
+		}
+	}
+	return nil, nil
+}
+
+type Collector struct {
+	rd   *ringbuf.Reader
+	kp   link.Link
+	coll *ebpf.Collection
+}
+
+func NewCollector() (*Collector, error) {
+	if err := rlimit.RemoveMemlock(); err != nil {
+		return nil, ErrNoPrivileges
+	}
+
+	spec, err := ebpf.LoadCollectionSpecFromReader(bytes.NewReader(bpfObj))
+	if err != nil {
+		return nil, err
+	}
+
+	coll, err := ebpf.NewCollection(spec)
+	if err != nil {
+		return nil, fmt.Errorf("create collection: %w", err)
+	}
+
+	prog := coll.Programs["kprobe__tcp_connect"]
+	if prog == nil {
+		coll.Close()
+		return nil, fmt.Errorf("program not found")
+	}
+
+	kp, err := link.Kprobe("tcp_connect", prog, nil)
+	if err != nil {
+		coll.Close()
+		return nil, fmt.Errorf("attach kprobe: %w", err)
+	}
+
+	eventsMap := coll.Maps["events"]
+	if eventsMap == nil {
+		kp.Close()
+		coll.Close()
+		return nil, fmt.Errorf("events map not found")
+	}
+
+	rd, err := ringbuf.NewReader(eventsMap)
+	if err != nil {
+		kp.Close()
+		coll.Close()
+		return nil, fmt.Errorf("ringbuf reader: %w", err)
+	}
+
+	c := &Collector{rd: rd, kp: kp, coll: coll}
+	return c, nil
+}
+
+func (c *Collector) Read() (FlowEvent, error) {
+	record, err := c.rd.Read()
+	if err != nil {
+		return FlowEvent{}, err
+	}
+
+	data := record.RawSample
+	if len(data) < 28 {
+		return c.Read()
+	}
+
+	return FlowEvent{
+		SrcIP:   net.IP(data[0:4]),
+		DstIP:   net.IP(data[4:8]),
+		SrcPort: binary.LittleEndian.Uint16(data[8:10]),
+		DstPort: binary.BigEndian.Uint16(data[10:12]),
+		PID:     binary.LittleEndian.Uint32(data[12:16]),
+		Comm:    string(bytes.TrimRight(data[16:32], "\x00")),
+	}, nil
+}
+
+func (c *Collector) Close() {
+	c.rd.Close()
+	c.kp.Close()
+	c.coll.Close()
+}
+
+func Run(out chan<- FlowEvent) error {
+	c, err := NewCollector()
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt)
+
+	go func() {
+		<-sig
+		c.Close()
+	}()
+
+	for {
+		ev, err := c.Read()
+		if err != nil {
+			return err
+		}
+		out <- ev
+	}
+}
