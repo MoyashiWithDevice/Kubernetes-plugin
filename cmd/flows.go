@@ -12,7 +12,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var noResolve bool
+var (
+	noResolve  bool
+	resolveSvc bool
+)
 
 var flowsCmd = &cobra.Command{
 	Use:   "flows",
@@ -21,27 +24,40 @@ var flowsCmd = &cobra.Command{
 		c, err := flow.NewCollector()
 		if err != nil {
 			if err == flow.ErrNoPrivileges {
+				args := []string{}
 				if noResolve {
-					return flow.RunInKind("-n")
+					args = append(args, "-n")
 				}
-				return flow.RunInKind()
+				if resolveSvc {
+					args = append(args, "--svc")
+				}
+				return flow.RunInKind(args...)
 			}
 			return err
 		}
 		defer c.Close()
 
-		var r *resolver.PodResolver
-		if noResolve {
+		var r resolver.Resolver
+		switch {
+		case noResolve:
 			fmt.Fprintln(os.Stderr, "resolver: disabled (-n)")
-			r = resolver.New(nil, false)
-		} else {
+			r = resolver.NewPod(nil, false)
+		case resolveSvc:
+			fmt.Fprintln(os.Stderr, "resolver: service mode")
 			client, err := kubernetes.NewClient()
 			if err != nil {
 				return fmt.Errorf("kubernetes client: %w", err)
 			}
-			r = resolver.New(client, true)
-			defer r.Close()
+			r = resolver.NewService(client, true)
+		default:
+			fmt.Fprintln(os.Stderr, "resolver: pod mode")
+			client, err := kubernetes.NewClient()
+			if err != nil {
+				return fmt.Errorf("kubernetes client: %w", err)
+			}
+			r = resolver.NewPod(client, true)
 		}
+		defer r.Close()
 
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt)
@@ -66,6 +82,7 @@ var flowsCmd = &cobra.Command{
 }
 
 func init() {
-	flowsCmd.Flags().BoolVarP(&noResolve, "no-resolve", "n", false, "Skip pod name resolution (show IPs only)")
+	flowsCmd.Flags().BoolVarP(&noResolve, "no-resolve", "n", false, "Skip name resolution (show IPs only)")
+	flowsCmd.Flags().BoolVarP(&resolveSvc, "svc", "", false, "Resolve IPs to Service names")
 	rootCmd.AddCommand(flowsCmd)
 }

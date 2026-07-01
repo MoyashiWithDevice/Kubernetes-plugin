@@ -12,6 +12,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+type Resolver interface {
+	Resolve(ip net.IP) string
+	Close()
+}
+
 type PodResolver struct {
 	mu      sync.RWMutex
 	podIPs  map[string]string
@@ -19,7 +24,7 @@ type PodResolver struct {
 	enabled bool
 }
 
-func New(client kubernetes.Interface, enabled bool) *PodResolver {
+func NewPod(client kubernetes.Interface, enabled bool) *PodResolver {
 	r := &PodResolver{
 		podIPs:  make(map[string]string),
 		stopCh:  make(chan struct{}),
@@ -29,10 +34,9 @@ func New(client kubernetes.Interface, enabled bool) *PodResolver {
 		return r
 	}
 
-	// initial list: populate the map synchronously
 	pods, err := client.CoreV1().Pods(v1.NamespaceAll).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "resolver: List pods failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "resolver(pod): List pods failed: %v\n", err)
 	} else {
 		for i := range pods.Items {
 			p := &pods.Items[i]
@@ -40,19 +44,17 @@ func New(client kubernetes.Interface, enabled bool) *PodResolver {
 				r.podIPs[p.Status.PodIP] = p.Name
 			}
 		}
-		fmt.Fprintf(os.Stderr, "resolver: loaded %d pods (%d with IP)\n", len(pods.Items), len(r.podIPs))
+		fmt.Fprintf(os.Stderr, "resolver(pod): loaded %d pods (%d with IP)\n", len(pods.Items), len(r.podIPs))
 	}
 
-	// watch: keep the map up-to-date asynchronously
 	go r.watchPods(client)
-
 	return r
 }
 
 func (r *PodResolver) watchPods(client kubernetes.Interface) {
 	wi, err := client.CoreV1().Pods(v1.NamespaceAll).Watch(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "resolver: Watch pods failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "resolver(pod): Watch pods failed: %v\n", err)
 		return
 	}
 	defer wi.Stop()
@@ -63,7 +65,7 @@ func (r *PodResolver) watchPods(client kubernetes.Interface) {
 			return
 		case ev, ok := <-wi.ResultChan():
 			if !ok {
-				fmt.Fprintf(os.Stderr, "resolver: Watch channel closed, restarting...\n")
+				fmt.Fprintf(os.Stderr, "resolver(pod): Watch channel closed, restarting...\n")
 				go r.watchPods(client)
 				return
 			}
