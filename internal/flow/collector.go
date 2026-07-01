@@ -32,7 +32,7 @@ type FlowEvent struct {
 	Comm    string
 }
 
-func RunInKind(extraArgs ...string) error {
+func RunInKind(subcommand string, extraArgs ...string) error {
 	self, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("eBPF requires privileges but cannot detect binary path: %w", err)
@@ -58,7 +58,7 @@ func RunInKind(extraArgs ...string) error {
 			lastErr = err
 			continue
 		}
-		args := []string{"docker", "exec", "-i", node, "/usr/local/bin/kubectl-detective", "flows"}
+		args := []string{"docker", "exec", "-i", node, "/usr/local/bin/kubectl-detective", subcommand}
 		args = append(args, extraArgs...)
 		cmd := exec.Command(args[0], args[1:]...)
 		cmd.Stdin = os.Stdin

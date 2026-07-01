@@ -31,7 +31,7 @@ var flowsCmd = &cobra.Command{
 				if resolveSvc {
 					args = append(args, "--svc")
 				}
-				return flow.RunInKind(args...)
+				return flow.RunInKind("flows", args...)
 			}
 			return err
 		}

@@ -3,6 +3,7 @@ package resolver
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"sync"
@@ -11,6 +12,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
+
+var logWriter io.Writer = os.Stderr
+
+func SetLogOutput(w io.Writer) {
+	logWriter = w
+}
 
 type Resolver interface {
 	Resolve(ip net.IP) string
@@ -36,7 +43,7 @@ func NewPod(client kubernetes.Interface, enabled bool) *PodResolver {
 
 	pods, err := client.CoreV1().Pods(v1.NamespaceAll).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "resolver(pod): List pods failed: %v\n", err)
+		fmt.Fprintf(logWriter, "resolver(pod): List pods failed: %v\n", err)
 	} else {
 		for i := range pods.Items {
 			p := &pods.Items[i]
@@ -44,7 +51,7 @@ func NewPod(client kubernetes.Interface, enabled bool) *PodResolver {
 				r.podIPs[p.Status.PodIP] = p.Name
 			}
 		}
-		fmt.Fprintf(os.Stderr, "resolver(pod): loaded %d pods (%d with IP)\n", len(pods.Items), len(r.podIPs))
+		fmt.Fprintf(logWriter, "resolver(pod): loaded %d pods (%d with IP)\n", len(pods.Items), len(r.podIPs))
 	}
 
 	go r.watchPods(client)
@@ -54,7 +61,7 @@ func NewPod(client kubernetes.Interface, enabled bool) *PodResolver {
 func (r *PodResolver) watchPods(client kubernetes.Interface) {
 	wi, err := client.CoreV1().Pods(v1.NamespaceAll).Watch(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "resolver(pod): Watch pods failed: %v\n", err)
+		fmt.Fprintf(logWriter, "resolver(pod): Watch pods failed: %v\n", err)
 		return
 	}
 	defer wi.Stop()
@@ -65,7 +72,7 @@ func (r *PodResolver) watchPods(client kubernetes.Interface) {
 			return
 		case ev, ok := <-wi.ResultChan():
 			if !ok {
-				fmt.Fprintf(os.Stderr, "resolver(pod): Watch channel closed, restarting...\n")
+				fmt.Fprintf(logWriter, "resolver(pod): Watch channel closed, restarting...\n")
 				go r.watchPods(client)
 				return
 			}
