@@ -16,11 +16,12 @@ import (
 )
 
 var (
-	mapNoResolve  bool
-	mapResolveSvc bool
-	mapDuration   time.Duration
-	mapMermaid    bool
-	mapNoHeaders  bool
+	mapNoResolve   bool
+	mapResolvePod  bool
+	mapResolveSvc  bool
+	mapDuration    time.Duration
+	mapMermaid     bool
+	mapNoHeaders   bool
 )
 
 var mapCmd = &cobra.Command{
@@ -37,8 +38,8 @@ Use --no-headers to suppress progress messages (useful for file redirect).`,
 				if mapNoResolve {
 					extra = append(extra, "-n")
 				}
-				if mapResolveSvc {
-					extra = append(extra, "--svc")
+				if mapResolvePod {
+					extra = append(extra, "--pod")
 				}
 				if mapDuration > 0 {
 					extra = append(extra, "--duration", mapDuration.String())
@@ -66,20 +67,20 @@ Use --no-headers to suppress progress messages (useful for file redirect).`,
 		case mapNoResolve:
 			fmt.Fprintln(log, "resolver: disabled (-n)")
 			r = resolver.NewPod(nil, false)
-		case mapResolveSvc:
-			fmt.Fprintln(log, "resolver: service mode")
-			client, err := kubernetes.NewClient()
-			if err != nil {
-				return fmt.Errorf("kubernetes client: %w", err)
-			}
-			r = resolver.NewService(client, true)
-		default:
+		case mapResolvePod:
 			fmt.Fprintln(log, "resolver: pod mode")
 			client, err := kubernetes.NewClient()
 			if err != nil {
 				return fmt.Errorf("kubernetes client: %w", err)
 			}
 			r = resolver.NewPod(client, true)
+		default:
+			fmt.Fprintln(log, "resolver: service mode")
+			client, err := kubernetes.NewClient()
+			if err != nil {
+				return fmt.Errorf("kubernetes client: %w", err)
+			}
+			r = resolver.NewService(client, true)
 		}
 		defer r.Close()
 
@@ -144,6 +145,7 @@ func init() {
 	mapCmd.Flags().BoolVarP(&mapMermaid, "mermaid", "m", false, "Output Mermaid format only (for file redirect)")
 	mapCmd.Flags().BoolVarP(&mapNoHeaders, "no-headers", "", false, "Suppress progress messages")
 	mapCmd.Flags().BoolVarP(&mapNoResolve, "no-resolve", "n", false, "Skip name resolution (show IPs only)")
+	mapCmd.Flags().BoolVarP(&mapResolvePod, "pod", "", false, "Resolve IPs to Pod names")
 	mapCmd.Flags().BoolVarP(&mapResolveSvc, "svc", "", false, "Resolve IPs to Service names")
 	mapCmd.Flags().DurationVarP(&mapDuration, "duration", "d", 10*time.Second, "Collection duration (0 = continuous)")
 	rootCmd.AddCommand(mapCmd)

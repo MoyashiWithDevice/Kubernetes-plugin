@@ -14,6 +14,7 @@ import (
 
 var (
 	noResolve  bool
+	resolvePod bool
 	resolveSvc bool
 )
 
@@ -28,8 +29,8 @@ var flowsCmd = &cobra.Command{
 				if noResolve {
 					args = append(args, "-n")
 				}
-				if resolveSvc {
-					args = append(args, "--svc")
+				if resolvePod {
+					args = append(args, "--pod")
 				}
 				return flow.RunInKind("flows", args...)
 			}
@@ -42,20 +43,20 @@ var flowsCmd = &cobra.Command{
 		case noResolve:
 			fmt.Fprintln(os.Stderr, "resolver: disabled (-n)")
 			r = resolver.NewPod(nil, false)
-		case resolveSvc:
-			fmt.Fprintln(os.Stderr, "resolver: service mode")
-			client, err := kubernetes.NewClient()
-			if err != nil {
-				return fmt.Errorf("kubernetes client: %w", err)
-			}
-			r = resolver.NewService(client, true)
-		default:
+		case resolvePod:
 			fmt.Fprintln(os.Stderr, "resolver: pod mode")
 			client, err := kubernetes.NewClient()
 			if err != nil {
 				return fmt.Errorf("kubernetes client: %w", err)
 			}
 			r = resolver.NewPod(client, true)
+		default:
+			fmt.Fprintln(os.Stderr, "resolver: service mode")
+			client, err := kubernetes.NewClient()
+			if err != nil {
+				return fmt.Errorf("kubernetes client: %w", err)
+			}
+			r = resolver.NewService(client, true)
 		}
 		defer r.Close()
 
@@ -83,6 +84,7 @@ var flowsCmd = &cobra.Command{
 
 func init() {
 	flowsCmd.Flags().BoolVarP(&noResolve, "no-resolve", "n", false, "Skip name resolution (show IPs only)")
+	flowsCmd.Flags().BoolVarP(&resolvePod, "pod", "", false, "Resolve IPs to Pod names")
 	flowsCmd.Flags().BoolVarP(&resolveSvc, "svc", "", false, "Resolve IPs to Service names")
 	rootCmd.AddCommand(flowsCmd)
 }
