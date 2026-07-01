@@ -1,6 +1,8 @@
 package kubernetes
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 
 	"k8s.io/client-go/kubernetes"
@@ -9,10 +11,19 @@ import (
 )
 
 func NewClient() (*kubernetes.Clientset, error) {
-	kubeconfig := filepath.Join(homedir.HomeDir(), ".kube", "config")
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-	if err != nil {
-		return nil, err
+	paths := []string{
+		os.Getenv("KUBECONFIG"),
+		filepath.Join(homedir.HomeDir(), ".kube", "config"),
+		"/etc/kubernetes/admin.conf",
 	}
-	return kubernetes.NewForConfig(config)
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		config, err := clientcmd.BuildConfigFromFlags("", p)
+		if err == nil {
+			return kubernetes.NewForConfig(config)
+		}
+	}
+	return nil, fmt.Errorf("no kubeconfig found in %v", paths)
 }

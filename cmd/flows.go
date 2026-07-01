@@ -6,9 +6,13 @@ import (
 	"os/signal"
 
 	"Kubernetes-plugin/internal/flow"
+	"Kubernetes-plugin/internal/kubernetes"
+	"Kubernetes-plugin/internal/resolver"
 
 	"github.com/spf13/cobra"
 )
+
+var noResolve bool
 
 var flowsCmd = &cobra.Command{
 	Use:   "flows",
@@ -17,11 +21,27 @@ var flowsCmd = &cobra.Command{
 		c, err := flow.NewCollector()
 		if err != nil {
 			if err == flow.ErrNoPrivileges {
+				if noResolve {
+					return flow.RunInKind("-n")
+				}
 				return flow.RunInKind()
 			}
 			return err
 		}
 		defer c.Close()
+
+		var r *resolver.PodResolver
+		if noResolve {
+			fmt.Fprintln(os.Stderr, "resolver: disabled (-n)")
+			r = resolver.New(nil, false)
+		} else {
+			client, err := kubernetes.NewClient()
+			if err != nil {
+				return fmt.Errorf("kubernetes client: %w", err)
+			}
+			r = resolver.New(client, true)
+			defer r.Close()
+		}
 
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt)
@@ -38,11 +58,14 @@ var flowsCmd = &cobra.Command{
 				return err
 			}
 			fmt.Printf("%s:%d → %s:%d [pid=%d] (%s)\n",
-				ev.SrcIP, ev.SrcPort, ev.DstIP, ev.DstPort, ev.PID, ev.Comm)
+				r.Resolve(ev.SrcIP), ev.SrcPort,
+				r.Resolve(ev.DstIP), ev.DstPort,
+				ev.PID, ev.Comm)
 		}
 	},
 }
 
 func init() {
+	flowsCmd.Flags().BoolVarP(&noResolve, "no-resolve", "n", false, "Skip pod name resolution (show IPs only)")
 	rootCmd.AddCommand(flowsCmd)
 }
