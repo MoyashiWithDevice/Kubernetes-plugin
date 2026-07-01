@@ -11,6 +11,10 @@ import (
 	"Kubernetes-plugin/internal/resolver"
 )
 
+type ThroughputReader interface {
+	ReadThroughput(func(flow.ThroughputKey, flow.ThroughputVal) error) error
+}
+
 type FlowKey struct {
 	SrcIP   string
 	DstIP   string
@@ -25,13 +29,17 @@ type FlowStats struct {
 
 type Tracker struct {
 	flows map[FlowKey]*FlowStats
+	prev  map[FlowKey]*FlowStats
 }
 
 func New() *Tracker {
-	return &Tracker{flows: make(map[FlowKey]*FlowStats)}
+	return &Tracker{
+		flows: make(map[FlowKey]*FlowStats),
+		prev:  make(map[FlowKey]*FlowStats),
+	}
 }
 
-func (t *Tracker) Snapshot(collector *flow.Collector) error {
+func (t *Tracker) Snapshot(collector ThroughputReader) error {
 	return collector.ReadThroughput(func(key flow.ThroughputKey, val flow.ThroughputVal) error {
 		fk := FlowKey{
 			SrcIP:   net.IP(key.SrcIP[:]).String(),
@@ -54,6 +62,41 @@ func (t *Tracker) Snapshot(collector *flow.Collector) error {
 		}
 		return nil
 	})
+}
+
+func (t *Tracker) Watch(collector ThroughputReader) error {
+	cur := make(map[FlowKey]*FlowStats)
+	err := collector.ReadThroughput(func(key flow.ThroughputKey, val flow.ThroughputVal) error {
+		fk := FlowKey{
+			SrcIP:   net.IP(key.SrcIP[:]).String(),
+			DstIP:   net.IP(key.DstIP[:]).String(),
+			SrcPort: key.SrcPort,
+			DstPort: key.DstPort,
+		}
+		cur[fk] = &FlowStats{TxBytes: val.TxBytes, RxBytes: val.RxBytes}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	t.flows = make(map[FlowKey]*FlowStats)
+	for k, v := range cur {
+		if prev, ok := t.prev[k]; ok {
+			tx := v.TxBytes - prev.TxBytes
+			rx := v.RxBytes - prev.RxBytes
+			if tx > 0 || rx > 0 {
+				t.flows[k] = &FlowStats{TxBytes: tx, RxBytes: rx}
+			}
+		} else {
+			if v.TxBytes > 0 || v.RxBytes > 0 {
+				t.flows[k] = &FlowStats{TxBytes: v.TxBytes, RxBytes: v.RxBytes}
+			}
+		}
+	}
+
+	t.prev = cur
+	return nil
 }
 
 type Talker struct {

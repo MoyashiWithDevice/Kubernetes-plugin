@@ -25,6 +25,7 @@ var (
 	topUnitMB     bool
 	topUnitKB     bool
 	topUnitB      bool
+	topWatch      bool
 )
 
 var topCmd = &cobra.Command{
@@ -60,6 +61,9 @@ Default output shows per-connection top talkers. Use --endpoints for per-endpoin
 				}
 				if topUnitB {
 					extra = append(extra, "-B")
+				}
+				if topWatch {
+					extra = append(extra, "-w")
 				}
 				return flow.RunInKind("top", extra...)
 			}
@@ -103,6 +107,10 @@ Default output shows per-connection top talkers. Use --endpoints for per-endpoin
 		signal.Notify(sig, os.Interrupt)
 
 		tracker := throughput.New()
+
+		if topWatch {
+			return runWatch(c, r, tracker, sig)
+		}
 
 		if topDuration > 0 {
 			fmt.Fprintf(log, "Collecting throughput for %s...\n", topDuration)
@@ -182,6 +190,68 @@ Default output shows per-connection top talkers. Use --endpoints for per-endpoin
 	},
 }
 
+func runWatch(c *flow.Collector, r resolver.Resolver, tracker *throughput.Tracker, sig <-chan os.Signal) error {
+	if err := tracker.Watch(c); err != nil {
+		return fmt.Errorf("initial watch: %w", err)
+	}
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	interval := 2 * time.Second
+
+	var unit byte
+	switch {
+	case topUnitMB:
+		unit = 'M'
+	case topUnitKB:
+		unit = 'K'
+	case topUnitB:
+		unit = 'B'
+	}
+
+	for {
+		select {
+		case <-ticker.C:
+			if err := tracker.Watch(c); err != nil {
+				return fmt.Errorf("watch: %w", err)
+			}
+
+			var elapsed time.Duration
+			if topDuration > 0 {
+				elapsed = topDuration
+			} else {
+				elapsed = interval
+			}
+
+			u := unit
+			if topByEndpoint {
+				endpoints := tracker.TopEndpoints(r)
+				if u == 0 {
+					vals := make([]uint64, len(endpoints))
+					for i, ep := range endpoints {
+						vals[i] = ep.TotalBytes
+					}
+					u = throughput.BestUnit(vals...)
+				}
+				fmt.Print("\033[2J\033[H" + throughput.FormatEndpoints(endpoints, elapsed, u))
+			} else {
+				talkers := tracker.TopTalkers(r)
+				if u == 0 {
+					vals := make([]uint64, len(talkers))
+					for i, t := range talkers {
+						vals[i] = t.TotalBytes
+					}
+					u = throughput.BestUnit(vals...)
+				}
+				fmt.Print("\033[2J\033[H" + throughput.FormatTalkers(talkers, elapsed, u))
+			}
+		case <-sig:
+			return nil
+		}
+	}
+}
+
 func init() {
 	topCmd.Flags().DurationVarP(&topDuration, "duration", "d", 10*time.Second, "Collection duration (0 = continuous)")
 	topCmd.Flags().BoolVarP(&topNoResolve, "no-resolve", "n", false, "Skip name resolution (show IPs only)")
@@ -192,6 +262,7 @@ func init() {
 	topCmd.Flags().BoolVarP(&topUnitMB, "mb", "M", false, "Display in MB units")
 	topCmd.Flags().BoolVarP(&topUnitKB, "kb", "K", false, "Display in KB units")
 	topCmd.Flags().BoolVarP(&topUnitB, "bytes", "B", false, "Display in bytes")
+	topCmd.Flags().BoolVarP(&topWatch, "watch", "w", false, "Live updating display (like Linux top)")
 	topCmd.MarkFlagsMutuallyExclusive("mb", "kb", "bytes")
 	rootCmd.AddCommand(topCmd)
 }

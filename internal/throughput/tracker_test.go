@@ -4,6 +4,8 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"Kubernetes-plugin/internal/flow"
 )
 
 type stubResolver struct{}
@@ -169,5 +171,90 @@ func TestTopEndpointsNoData(t *testing.T) {
 	eps := tracker.TopEndpoints(r)
 	if len(eps) != 0 {
 		t.Fatalf("expected 0 endpoints, got %d", len(eps))
+	}
+}
+
+type stubCollector struct {
+	data []struct {
+		key flow.ThroughputKey
+		val flow.ThroughputVal
+	}
+}
+
+func (s *stubCollector) ReadThroughput(fn func(flow.ThroughputKey, flow.ThroughputVal) error) error {
+	for i := range s.data {
+		if err := fn(s.data[i].key, s.data[i].val); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func TestWatch(t *testing.T) {
+	toBytes := func(ip string) [4]byte {
+		parsed := net.ParseIP(ip).To4()
+		var b [4]byte
+		copy(b[:], parsed)
+		return b
+	}
+
+	key := flow.ThroughputKey{
+		SrcIP:   toBytes("10.0.1.1"),
+		DstIP:   toBytes("10.0.1.2"),
+		SrcPort: 80,
+		DstPort: 8080,
+	}
+
+	c := &stubCollector{
+		data: []struct {
+			key flow.ThroughputKey
+			val flow.ThroughputVal
+		}{
+			{key: key, val: flow.ThroughputVal{TxBytes: 1000, RxBytes: 500}},
+		},
+	}
+
+	tracker := New()
+	if err := tracker.Watch(c); err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+
+	if len(tracker.flows) != 1 {
+		t.Fatalf("expected 1 flow, got %d", len(tracker.flows))
+	}
+	for k, v := range tracker.flows {
+		if k.SrcIP != "10.0.1.1" || k.DstIP != "10.0.1.2" || k.SrcPort != 80 || k.DstPort != 8080 {
+			t.Fatalf("unexpected key: %+v", k)
+		}
+		if v.TxBytes != 1000 || v.RxBytes != 500 {
+			t.Fatalf("expected tx=1000 rx=500, got tx=%d rx=%d", v.TxBytes, v.RxBytes)
+		}
+	}
+
+	// Second call with incremented values — should get delta
+	c.data[0].val = flow.ThroughputVal{TxBytes: 1500, RxBytes: 700}
+	if err := tracker.Watch(c); err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+
+	if len(tracker.flows) != 1 {
+		t.Fatalf("expected 1 flow after second Watch, got %d", len(tracker.flows))
+	}
+	for k, v := range tracker.flows {
+		if k.SrcIP != "10.0.1.1" || k.DstIP != "10.0.1.2" {
+			t.Fatalf("unexpected key: %+v", k)
+		}
+		if v.TxBytes != 500 || v.RxBytes != 200 {
+			t.Fatalf("expected delta tx=500 rx=200, got tx=%d rx=%d", v.TxBytes, v.RxBytes)
+		}
+	}
+
+	// Third call with no change — key should not appear
+	c.data[0].val = flow.ThroughputVal{TxBytes: 1500, RxBytes: 700}
+	if err := tracker.Watch(c); err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+	if len(tracker.flows) != 0 {
+		t.Fatalf("expected 0 flows (no delta), got %d", len(tracker.flows))
 	}
 }
