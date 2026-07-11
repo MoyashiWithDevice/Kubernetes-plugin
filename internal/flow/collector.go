@@ -32,6 +32,9 @@ type FlowEvent struct {
 	Comm    string
 }
 
+// nodeKubeconfig is the path used inside kind nodes for API access.
+const nodeKubeconfig = "/tmp/kubectl-detective.kubeconfig"
+
 func RunInKind(subcommand string, extraArgs ...string) error {
 	self, err := os.Executable()
 	if err != nil {
@@ -52,13 +55,33 @@ func RunInKind(subcommand string, extraArgs ...string) error {
 		return fmt.Errorf("read binary: %w", err)
 	}
 
+	// Prefer workers for eBPF (pod traffic); control-plane is still a fallback.
+	nodes = preferWorkers(nodes)
+
+	kubeconfig, err := loadKindAPIKubeconfig(nodes)
+	if err != nil {
+		// Resolution may not be needed (e.g. -n); continue without it.
+		kubeconfig = nil
+	}
+
 	lastErr := errors.New("no reachable kind nodes")
 	for _, node := range nodes {
 		if err := copyToNode(node, data); err != nil {
 			lastErr = err
 			continue
 		}
-		args := []string{"docker", "exec", "-i", node, "/usr/local/bin/kubectl-detective", subcommand}
+		if len(kubeconfig) > 0 {
+			if err := writeToNode(node, nodeKubeconfig, kubeconfig); err != nil {
+				lastErr = err
+				continue
+			}
+		}
+
+		args := []string{"docker", "exec", "-i"}
+		if len(kubeconfig) > 0 {
+			args = append(args, "-e", "KUBECONFIG="+nodeKubeconfig)
+		}
+		args = append(args, node, "/usr/local/bin/kubectl-detective", subcommand)
 		args = append(args, extraArgs...)
 		cmd := exec.Command(args[0], args[1:]...)
 		cmd.Stdin = os.Stdin
@@ -70,31 +93,91 @@ func RunInKind(subcommand string, extraArgs ...string) error {
 }
 
 func copyToNode(node string, data []byte) error {
-	cmd := exec.Command("docker", "exec", "-i", node, "sh", "-c",
-		"rm -f /usr/local/bin/kubectl-detective && cat > /usr/local/bin/kubectl-detective && chmod +x /usr/local/bin/kubectl-detective")
+	return writeToNode(node, "/usr/local/bin/kubectl-detective", data)
+}
+
+func writeToNode(node, path string, data []byte) error {
+	var script string
+	if path == "/usr/local/bin/kubectl-detective" {
+		script = fmt.Sprintf("rm -f '%s' && cat > '%s' && chmod +x '%s'", path, path, path)
+	} else {
+		script = fmt.Sprintf("mkdir -p \"$(dirname '%s')\" && cat > '%s' && chmod 600 '%s'", path, path, path)
+	}
+	cmd := exec.Command("docker", "exec", "-i", node, "sh", "-c", script)
 	cmd.Stdin = bytes.NewReader(data)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("copy to %s: %w\n%s", node, err, string(out))
+		return fmt.Errorf("write %s on %s: %w\n%s", path, node, err, string(out))
 	}
 	return nil
 }
 
-func listKindNodes() ([]string, error) {
-	labels := []string{
-		"io.x-k8s.kind.role",
-	}
-	for _, label := range labels {
-		out, err := exec.Command("docker", "ps", "--filter", "label="+label, "--format", "{{.Names}}").Output()
-		if err != nil {
+// loadKindAPIKubeconfig returns a kubeconfig usable from inside kind nodes.
+// Host kubeconfig points at 127.0.0.1:<mapped-port> and does not work in-node;
+// control-plane admin.conf uses the in-cluster API hostname.
+func loadKindAPIKubeconfig(nodes []string) ([]byte, error) {
+	// Prefer admin.conf from a control-plane container.
+	for _, node := range nodes {
+		if !isControlPlane(node) {
 			continue
 		}
-		nodes := strings.Fields(string(out))
-		if len(nodes) > 0 {
-			return nodes, nil
+		out, err := exec.Command("docker", "exec", node, "cat", "/etc/kubernetes/admin.conf").Output()
+		if err == nil && len(out) > 0 {
+			return out, nil
 		}
 	}
-	return nil, nil
+
+	// Discover control-plane even if not in the preferred run list.
+	cpNodes, _ := listKindNodesByRole("control-plane")
+	for _, node := range cpNodes {
+		out, err := exec.Command("docker", "exec", node, "cat", "/etc/kubernetes/admin.conf").Output()
+		if err == nil && len(out) > 0 {
+			return out, nil
+		}
+	}
+
+	return nil, fmt.Errorf("kind control-plane admin.conf not found")
+}
+
+func isControlPlane(node string) bool {
+	out, err := exec.Command("docker", "inspect", "-f",
+		`{{index .Config.Labels "io.x-k8s.kind.role"}}`, node).Output()
+	if err != nil {
+		return strings.Contains(node, "control-plane")
+	}
+	return strings.TrimSpace(string(out)) == "control-plane"
+}
+
+func preferWorkers(nodes []string) []string {
+	var workers, others []string
+	for _, n := range nodes {
+		if isControlPlane(n) {
+			others = append(others, n)
+		} else {
+			workers = append(workers, n)
+		}
+	}
+	return append(workers, others...)
+}
+
+func listKindNodes() ([]string, error) {
+	return listKindNodesByRole("")
+}
+
+func listKindNodesByRole(role string) ([]string, error) {
+	args := []string{"ps", "--filter", "label=io.x-k8s.kind.role", "--format", "{{.Names}}"}
+	if role != "" {
+		args = []string{"ps", "--filter", "label=io.x-k8s.kind.role=" + role, "--format", "{{.Names}}"}
+	}
+	out, err := exec.Command("docker", args...).Output()
+	if err != nil {
+		return nil, err
+	}
+	nodes := strings.Fields(string(out))
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+	return nodes, nil
 }
 
 type Collector struct {
@@ -103,6 +186,7 @@ type Collector struct {
 	kpTx      link.Link
 	kpRx      link.Link
 	kpRetrans link.Link
+	kpRTT     link.Link
 	coll      *ebpf.Collection
 }
 
@@ -162,6 +246,11 @@ func NewCollector() (*Collector, error) {
 	if progRetrans := coll.Programs["kprobe__tcp_retransmit_skb"]; progRetrans != nil {
 		if kpRetrans, err := link.Kprobe("tcp_retransmit_skb", progRetrans, nil); err == nil {
 			c.kpRetrans = kpRetrans
+		}
+	}
+	if progRTT := coll.Programs["kprobe__tcp_rcv_established"]; progRTT != nil {
+		if kpRTT, err := link.Kprobe("tcp_rcv_established", progRTT, nil); err == nil {
+			c.kpRTT = kpRTT
 		}
 	}
 
@@ -231,6 +320,47 @@ func (c *Collector) ReadRetrans(fn func(RetransKey, RetransVal) error) error {
 	return iter.Err()
 }
 
+// RTTHistBuckets must match RTT_HIST_BUCKETS in bpf/tcp_connect.bpf.c.
+const RTTHistBuckets = 27
+
+type RTTKey struct {
+	SrcIP   [4]byte
+	DstIP   [4]byte
+	SrcPort uint16
+	DstPort uint16
+}
+
+// RTTVal matches struct rtt_val_t in bpf/tcp_connect.bpf.c.
+// Trailing pad is required: C aligns the struct to 8 bytes (sizeof = 136).
+type RTTVal struct {
+	SumUs uint64
+	Count uint64
+	MinUs uint32
+	MaxUs uint32
+	Hist  [RTTHistBuckets]uint32
+	_     uint32
+}
+
+func (c *Collector) HasRTT() bool {
+	return c.coll.Maps["rtt_map"] != nil && c.kpRTT != nil
+}
+
+func (c *Collector) ReadRTT(fn func(RTTKey, RTTVal) error) error {
+	rMap := c.coll.Maps["rtt_map"]
+	if rMap == nil {
+		return fmt.Errorf("rtt_map not available")
+	}
+	iter := rMap.Iterate()
+	var key RTTKey
+	var val RTTVal
+	for iter.Next(&key, &val) {
+		if err := fn(key, val); err != nil {
+			return err
+		}
+	}
+	return iter.Err()
+}
+
 func (c *Collector) Read() (FlowEvent, error) {
 	record, err := c.rd.Read()
 	if err != nil {
@@ -263,6 +393,9 @@ func (c *Collector) Close() {
 	}
 	if c.kpRetrans != nil {
 		c.kpRetrans.Close()
+	}
+	if c.kpRTT != nil {
+		c.kpRTT.Close()
 	}
 	c.coll.Close()
 }

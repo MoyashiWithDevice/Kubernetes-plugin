@@ -1,6 +1,8 @@
 BINARY_NAME=kubectl-detective
 KIND_CLUSTER_NAME=detective
-
+# Make の環境に GOPATH が無いと $(GOPATH)/bin が /bin になり install が失敗する
+GOPATH ?= $(shell go env GOPATH)
+INSTALL_DIR ?= $(GOPATH)/bin
 
 .PHONY: build
 build:
@@ -60,7 +62,10 @@ vmlinux:
 
 .PHONY: install
 install: build
-	cp bin/$(BINARY_NAME) $(GOPATH)/bin/$(BINARY_NAME)
+	mkdir -p $(INSTALL_DIR)
+	cp bin/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
+	@echo "Installed to $(INSTALL_DIR)/$(BINARY_NAME)"
+	@echo "Ensure $(INSTALL_DIR) is on your PATH so 'kubectl detective' works."
 
 .PHONY: kind-up
 kind-up:
@@ -91,11 +96,17 @@ kind-flows:
 .PHONY: help
 help:
 	@echo "Available targets:"
-	@echo "  build  - build binary"
-	@echo "  run    - run application"
-	@echo "  test   - run tests"
-	@echo "  fmt    - format code"
-	@echo "  vet    - run go vet"
-	@echo "  lint   - run golangci-lint"
-	@echo "  clean  - remove binaries"
-	@echo "  all    - fmt + vet + test + build"
+	@echo "  build       - build binary"
+	@echo "  install     - build and install to $(INSTALL_DIR)"
+	@echo "  run         - run application"
+	@echo "  test        - run tests"
+	@echo "  fmt         - format code"
+	@echo "  vet         - run go vet"
+	@echo "  lint        - run golangci-lint"
+	@echo "  clean       - remove binaries"
+	@echo "  all         - fmt + vet + test + build"
+	@echo "  bpf         - compile eBPF object"
+	@echo "  kind-up     - create kind cluster"
+	@echo "  kind-down   - delete kind cluster"
+	@echo "  kind-apply  - apply test deployment"
+	@echo "  kind-status - show kind cluster info"
