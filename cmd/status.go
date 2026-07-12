@@ -16,9 +16,9 @@ import (
 )
 
 var (
-	statusAddr       string
-	statusOutput     string
-	statusInKind     bool   // set when running inside kind to prevent recursion
+	statusAddr   string
+	statusOutput string
+	statusInKind bool // set when running inside kind to prevent recursion
 )
 
 var statusCmd = &cobra.Command{
