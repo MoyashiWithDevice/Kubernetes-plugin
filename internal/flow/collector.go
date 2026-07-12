@@ -187,6 +187,8 @@ type Collector struct {
 	kpRx      link.Link
 	kpRetrans link.Link
 	kpRTT     link.Link
+	kpDNSSend link.Link
+	kpDNSRecv link.Link
 	coll      *ebpf.Collection
 }
 
@@ -251,6 +253,16 @@ func NewCollector() (*Collector, error) {
 	if progRTT := coll.Programs["kprobe__tcp_rcv_established"]; progRTT != nil {
 		if kpRTT, err := link.Kprobe("tcp_rcv_established", progRTT, nil); err == nil {
 			c.kpRTT = kpRTT
+		}
+	}
+	if progDNSSend := coll.Programs["kprobe__udp_sendmsg"]; progDNSSend != nil {
+		if kpDNS, err := link.Kprobe("udp_sendmsg", progDNSSend, nil); err == nil {
+			c.kpDNSSend = kpDNS
+		}
+	}
+	if progDNSRecv := coll.Programs["kprobe__udp_rcv"]; progDNSRecv != nil {
+		if kpDNS, err := link.Kprobe("udp_rcv", progDNSRecv, nil); err == nil {
+			c.kpDNSRecv = kpDNS
 		}
 	}
 
@@ -361,6 +373,44 @@ func (c *Collector) ReadRTT(fn func(RTTKey, RTTVal) error) error {
 	return iter.Err()
 }
 
+// DNS-related types and methods.
+
+func (c *Collector) HasDNS() bool {
+	return c.coll.Maps["dns_stats_map"] != nil && c.kpDNSSend != nil && c.kpDNSRecv != nil
+}
+
+type DNSStatsKey struct {
+	SrcIP [4]byte
+	DstIP [4]byte
+}
+
+// DNSStatsVal matches struct dns_stats_val_t in bpf/tcp_connect.bpf.c.
+// Trailing pad is required: C aligns the struct to 8 bytes (sizeof = 136).
+type DNSStatsVal struct {
+	Count uint64
+	SumUs uint64
+	MinUs uint32
+	MaxUs uint32
+	Hist  [RTTHistBuckets]uint32
+	_     uint32
+}
+
+func (c *Collector) ReadDNSStats(fn func(DNSStatsKey, DNSStatsVal) error) error {
+	dMap := c.coll.Maps["dns_stats_map"]
+	if dMap == nil {
+		return fmt.Errorf("dns_stats_map not available")
+	}
+	iter := dMap.Iterate()
+	var key DNSStatsKey
+	var val DNSStatsVal
+	for iter.Next(&key, &val) {
+		if err := fn(key, val); err != nil {
+			return err
+		}
+	}
+	return iter.Err()
+}
+
 func (c *Collector) Read() (FlowEvent, error) {
 	record, err := c.rd.Read()
 	if err != nil {
@@ -396,6 +446,12 @@ func (c *Collector) Close() {
 	}
 	if c.kpRTT != nil {
 		c.kpRTT.Close()
+	}
+	if c.kpDNSSend != nil {
+		c.kpDNSSend.Close()
+	}
+	if c.kpDNSRecv != nil {
+		c.kpDNSRecv.Close()
 	}
 	c.coll.Close()
 }
