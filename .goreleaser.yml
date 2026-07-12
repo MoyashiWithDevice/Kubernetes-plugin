@@ -16,7 +16,6 @@ builds:
       - linux
     goarch:
       - amd64
-      - arm64
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
@@ -58,26 +57,14 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/moyashiwithdevice/kubectl-detective"
     dockerfile: Dockerfile
 
-  - image_templates:
-      - "ghcr.io/moyashiwithdevice/kubectl-detective:{{ .Version }}-arm64"
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.title=kubectl-detective"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.source=https://github.com/moyashiwithdevice/kubectl-detective"
-    dockerfile: Dockerfile
-
 docker_manifests:
   - name_template: "ghcr.io/moyashiwithdevice/kubectl-detective:{{ .Version }}"
     image_templates:
       - "ghcr.io/moyashiwithdevice/kubectl-detective:{{ .Version }}-amd64"
-      - "ghcr.io/moyashiwithdevice/kubectl-detective:{{ .Version }}-arm64"
 
   - name_template: "ghcr.io/moyashiwithdevice/kubectl-detective:latest"
     image_templates:
       - "ghcr.io/moyashiwithdevice/kubectl-detective:{{ .Version }}-amd64"
-      - "ghcr.io/moyashiwithdevice/kubectl-detective:{{ .Version }}-arm64"
 
 release:
   github:

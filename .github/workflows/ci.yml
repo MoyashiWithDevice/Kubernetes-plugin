@@ -29,10 +29,11 @@ jobs:
             -c bpf/tcp_connect.bpf.c -o internal/flow/tcp_connect.bpf.o
           llvm-strip -g internal/flow/tcp_connect.bpf.o
 
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+        run: golangci-lint run
 
   test:
     name: Test
@@ -65,9 +66,6 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        goarch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v4
 
@@ -76,7 +74,6 @@ jobs:
           go-version-file: go.mod
 
       - name: Compile eBPF
-        if: matrix.goarch == 'amd64'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq clang llvm libbpf-dev
@@ -88,15 +85,15 @@ jobs:
       - name: Build
         env:
           GOOS: linux
-          GOARCH: ${{ matrix.goarch }}
+          GOARCH: amd64
           CGO_ENABLED: 0
         run: |
-          go build -o bin/kubectl-detective_linux_${GOARCH} .
+          go build -o bin/kubectl-detective .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kubectl-detective_linux_${{ matrix.goarch }}
+          name: kubectl-detective_linux_amd64
           path: bin/
 
   helm:
