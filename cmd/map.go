@@ -5,8 +5,10 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
+	"Kubernetes-plugin/internal/export"
 	"Kubernetes-plugin/internal/flow"
 	"Kubernetes-plugin/internal/graph"
 	"Kubernetes-plugin/internal/kubernetes"
@@ -20,15 +22,18 @@ var (
 	mapResolvePod bool
 	mapResolveSvc bool
 	mapDuration   time.Duration
-	mapMermaid    bool
 	mapNoHeaders  bool
+	mapFormat     string
+	mapOutput     string
 )
 
 var mapCmd = &cobra.Command{
 	Use:   "map",
 	Short: "Show service dependency map",
 	Long: `Collect TCP flows and display a service dependency map.
-Default output is ASCII art. Use --mermaid (-m) for Mermaid format.
+Default output is ASCII art.
+Use --format to export as csv, json, html, mermaid, or ascii.
+Use --output (-o) to write to a file instead of stdout.
 Use --no-headers to suppress progress messages (useful for file redirect).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := flow.NewCollector()
@@ -44,13 +49,21 @@ Use --no-headers to suppress progress messages (useful for file redirect).`,
 				if mapDuration > 0 {
 					extra = append(extra, "--duration", mapDuration.String())
 				}
-				if mapMermaid {
-					extra = append(extra, "-m")
+			if mapNoHeaders {
+				extra = append(extra, "--no-headers")
+			}
+			if mapFormat != "" {
+				extra = append(extra, "--format", mapFormat)
+			}
+			if mapOutput != "" {
+				f, err := os.Create(mapOutput)
+				if err != nil {
+					return fmt.Errorf("create output file: %w", err)
 				}
-				if mapNoHeaders {
-					extra = append(extra, "--no-headers")
-				}
-				return flow.RunInKind("map", extra...)
+				defer f.Close()
+				return flow.RunInKindTo("map", f, extra...)
+			}
+			return flow.RunInKind("map", extra...)
 			}
 			return err
 		}
@@ -128,21 +141,52 @@ Use --no-headers to suppress progress messages (useful for file redirect).`,
 			}
 		}
 
-		if mapMermaid {
-			fmt.Print(g.Mermaid())
-		} else {
-			if !mapNoHeaders {
-				fmt.Print("Service Map\n═══════════\n\n")
+		format := resolveMapFormat()
+
+		rpt := export.NewReport(g, mapDuration)
+
+		var out io.Writer = os.Stdout
+		if mapOutput != "" {
+			f, err := os.Create(mapOutput)
+			if err != nil {
+				return fmt.Errorf("create output file: %w", err)
 			}
-			fmt.Print(g.ASCII())
+			defer f.Close()
+			out = f
+			fmt.Fprintf(log, "Writing %s to %s\n", format, mapOutput)
 		}
 
-		return nil
+		switch format {
+		case "csv":
+			return export.WriteCSV(out, rpt)
+		case "json":
+			return export.WriteJSON(out, rpt)
+		case "html":
+			return export.WriteHTML(out, rpt)
+		case "mermaid":
+			_, err := fmt.Fprint(out, g.Mermaid())
+			return err
+		default:
+			if !mapNoHeaders && mapOutput == "" {
+				fmt.Fprint(out, "Service Map\n═══════════\n\n")
+			}
+			_, err := fmt.Fprint(out, g.ASCII())
+			return err
+		}
 	},
 }
 
+func resolveMapFormat() string {
+	f := strings.ToLower(mapFormat)
+	if f != "" {
+		return f
+	}
+	return "ascii"
+}
+
 func init() {
-	mapCmd.Flags().BoolVarP(&mapMermaid, "mermaid", "m", false, "Output Mermaid format only (for file redirect)")
+	mapCmd.Flags().StringVarP(&mapFormat, "format", "f", "", "Output format: ascii, mermaid, csv, json, html (default: ascii)")
+	mapCmd.Flags().StringVarP(&mapOutput, "output", "o", "", "Write output to file instead of stdout")
 	mapCmd.Flags().BoolVarP(&mapNoHeaders, "no-headers", "", false, "Suppress progress messages")
 	mapCmd.Flags().BoolVarP(&mapNoResolve, "no-resolve", "n", false, "Skip name resolution (show IPs only)")
 	mapCmd.Flags().BoolVarP(&mapResolvePod, "pod", "", false, "Resolve IPs to Pod names")

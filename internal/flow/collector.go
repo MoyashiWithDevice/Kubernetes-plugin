@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -34,6 +35,63 @@ type FlowEvent struct {
 
 // nodeKubeconfig is the path used inside kind nodes for API access.
 const nodeKubeconfig = "/tmp/kubectl-detective.kubeconfig"
+
+// RunInKindTo is like RunInKind but writes the container's stdout to the given writer
+// instead of os.Stdout. Use this when the output should go to a file on the host.
+func RunInKindTo(subcommand string, stdout io.Writer, extraArgs ...string) error {
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("eBPF requires privileges but cannot detect binary path: %w", err)
+	}
+
+	if _, err := exec.LookPath("docker"); err != nil {
+		return fmt.Errorf("eBPF requires privileges: run inside kind node, or use: sudo setcap cap_bpf,cap_net_admin,cap_perfmon,cap_ipc_lock+eip %s", self)
+	}
+
+	nodes, err := listKindNodes()
+	if err != nil || len(nodes) == 0 {
+		return fmt.Errorf("kind cluster not found: start a kind cluster and try again, or use: sudo setcap cap_bpf,cap_net_admin,cap_perfmon,cap_ipc_lock+eip %s", self)
+	}
+
+	data, err := os.ReadFile(self)
+	if err != nil {
+		return fmt.Errorf("read binary: %w", err)
+	}
+
+	nodes = preferWorkers(nodes)
+
+	kubeconfig, err := loadKindAPIKubeconfig(nodes)
+	if err != nil {
+		kubeconfig = nil
+	}
+
+	lastErr := errors.New("no reachable kind nodes")
+	for _, node := range nodes {
+		if err := copyToNode(node, data); err != nil {
+			lastErr = err
+			continue
+		}
+		if len(kubeconfig) > 0 {
+			if err := writeToNode(node, nodeKubeconfig, kubeconfig); err != nil {
+				lastErr = err
+				continue
+			}
+		}
+
+		args := []string{"docker", "exec", "-i"}
+		if len(kubeconfig) > 0 {
+			args = append(args, "-e", "KUBECONFIG="+nodeKubeconfig)
+		}
+		args = append(args, node, "/usr/local/bin/kubectl-detective", subcommand)
+		args = append(args, extraArgs...)
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+	return lastErr
+}
 
 func RunInKind(subcommand string, extraArgs ...string) error {
 	self, err := os.Executable()
