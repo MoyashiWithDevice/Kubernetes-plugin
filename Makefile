@@ -93,20 +93,63 @@ kind-flows:
 	$(MAKE) install
 	kubectl detective flows
 
+.PHONY: proto
+proto:
+	protoc \
+		--proto_path=api/proto \
+		--go_out=api/detective/v1 --go_opt=paths=source_relative \
+		--go-grpc_out=api/detective/v1 --go-grpc_opt=paths=source_relative \
+		api/proto/detective.proto
+
+DOCKER_IMAGE ?= kubectl-detective:latest
+AGGREGATOR_NAMESPACE ?= detective
+
+.PHONY: docker-build
+docker-build:
+	docker build -t $(DOCKER_IMAGE) .
+
+.PHONY: deploy-aggregator
+deploy-aggregator:
+	kubectl apply -f deploy/aggregator.yaml
+
+.PHONY: deploy-agent
+deploy-agent:
+	kubectl apply -f deploy/agent.yaml
+
+.PHONY: deploy
+deploy: deploy-aggregator deploy-agent
+
+.PHONY: undeploy
+undeploy:
+	kubectl delete -f deploy/agent.yaml --ignore-not-found
+	kubectl delete -f deploy/aggregator.yaml --ignore-not-found
+
+.PHONY: kind-deploy
+kind-deploy: build
+	$(MAKE) kind-apply
+	$(MAKE) deploy
+
 .PHONY: help
 help:
 	@echo "Available targets:"
-	@echo "  build       - build binary"
-	@echo "  install     - build and install to $(INSTALL_DIR)"
-	@echo "  run         - run application"
-	@echo "  test        - run tests"
-	@echo "  fmt         - format code"
-	@echo "  vet         - run go vet"
-	@echo "  lint        - run golangci-lint"
-	@echo "  clean       - remove binaries"
-	@echo "  all         - fmt + vet + test + build"
-	@echo "  bpf         - compile eBPF object"
-	@echo "  kind-up     - create kind cluster"
-	@echo "  kind-down   - delete kind cluster"
-	@echo "  kind-apply  - apply test deployment"
-	@echo "  kind-status - show kind cluster info"
+	@echo "  build          - build binary"
+	@echo "  install        - build and install to $(INSTALL_DIR)"
+	@echo "  run            - run application"
+	@echo "  test           - run tests"
+	@echo "  fmt            - format code"
+	@echo "  vet            - run go vet"
+	@echo "  lint           - run golangci-lint"
+	@echo "  clean          - remove binaries"
+	@echo "  all            - fmt + vet + test + build"
+	@echo "  bpf            - compile eBPF object"
+	@echo "  proto          - generate protobuf/gRPC code"
+	@echo "  docker-build   - build Docker image"
+	@echo "  deploy         - deploy agent + aggregator to cluster"
+	@echo "  deploy-aggregator - deploy aggregator only"
+	@echo "  deploy-agent   - deploy agent DaemonSet only"
+	@echo "  undeploy       - remove detective from cluster"
+	@echo "  kind-up        - create kind cluster"
+	@echo "  kind-down      - delete kind cluster"
+	@echo "  kind-apply     - apply test deployment"
+	@echo "  kind-status    - show kind cluster info"
+	@echo "  kind-deploy    - build + deploy to kind cluster"

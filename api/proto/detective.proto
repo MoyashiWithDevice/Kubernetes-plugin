@@ -1,0 +1,143 @@
+syntax = "proto3";
+
+package detective.v1;
+
+option go_package = "Kubernetes-plugin/api/detective/v1;detectivev1";
+
+message FlowEvent {
+  bytes src_ip = 1;
+  bytes dst_ip = 2;
+  uint32 src_port = 3;
+  uint32 dst_port = 4;
+  uint32 pid = 5;
+  string comm = 6;
+}
+
+message ThroughputEntry {
+  bytes src_ip = 1;
+  bytes dst_ip = 2;
+  uint32 src_port = 3;
+  uint32 dst_port = 4;
+  uint64 tx_bytes = 5;
+  uint64 rx_bytes = 6;
+}
+
+message RetransEntry {
+  bytes src_ip = 1;
+  bytes dst_ip = 2;
+  uint32 src_port = 3;
+  uint32 dst_port = 4;
+  uint64 count = 5;
+}
+
+message RTTEntry {
+  bytes src_ip = 1;
+  bytes dst_ip = 2;
+  uint32 src_port = 3;
+  uint32 dst_port = 4;
+  uint64 sum_us = 5;
+  uint64 count = 6;
+  uint32 min_us = 7;
+  uint32 max_us = 8;
+  repeated uint32 hist = 9;
+}
+
+message DNSEntry {
+  bytes src_ip = 1;
+  bytes dst_ip = 2;
+  uint64 count = 3;
+  uint64 sum_us = 4;
+  uint32 min_us = 5;
+  uint32 max_us = 6;
+  repeated uint32 hist = 7;
+}
+
+message AgentSnapshot {
+  string node_name = 1;
+  int64 timestamp = 2;
+  repeated FlowEvent flows = 3;
+  repeated ThroughputEntry throughput = 4;
+  repeated RetransEntry retrans = 5;
+  repeated RTTEntry rtt = 6;
+  repeated DNSEntry dns = 7;
+}
+
+message SnapshotRequest {
+  AgentSnapshot snapshot = 1;
+}
+
+message SnapshotResponse {
+  bool ok = 1;
+}
+
+message Empty {}
+
+message FlowList {
+  repeated FlowEvent flows = 1;
+}
+
+message TopTalker {
+  string source = 1;
+  string destination = 2;
+  uint64 tx_bytes = 3;
+  uint64 rx_bytes = 4;
+  uint64 total_bytes = 5;
+  double tx_mbps = 6;
+  double rx_mbps = 7;
+}
+
+message TopTalkerList {
+  repeated TopTalker talkers = 1;
+}
+
+message RetransRecord {
+  string source = 1;
+  string destination = 2;
+  uint64 count = 3;
+}
+
+message RetransList {
+  repeated RetransRecord records = 1;
+}
+
+message LatencyRecord {
+  string source = 1;
+  string destination = 2;
+  double avg_us = 3;
+  double p95_us = 4;
+  double p99_us = 5;
+  uint32 min_us = 6;
+  uint32 max_us = 7;
+  uint64 samples = 8;
+}
+
+message LatencyList {
+  repeated LatencyRecord records = 1;
+}
+
+message DNSRecord {
+  string source = 1;
+  string destination = 2;
+  double avg_us = 3;
+  double p95_us = 4;
+  double p99_us = 5;
+  uint32 min_us = 6;
+  uint32 max_us = 7;
+  uint64 queries = 8;
+}
+
+message DNSList {
+  repeated DNSRecord records = 1;
+}
+
+service AgentService {
+  rpc SendSnapshot(SnapshotRequest) returns (SnapshotResponse);
+}
+
+service DetectiveService {
+  rpc GetFlows(Empty) returns (FlowList);
+  rpc GetTop(Empty) returns (TopTalkerList);
+  rpc GetRetrans(Empty) returns (RetransList);
+  rpc GetLatency(Empty) returns (LatencyList);
+  rpc GetDNS(Empty) returns (DNSList);
+}

@@ -49,21 +49,21 @@ Use --no-headers to suppress progress messages (useful for file redirect).`,
 				if mapDuration > 0 {
 					extra = append(extra, "--duration", mapDuration.String())
 				}
-			if mapNoHeaders {
-				extra = append(extra, "--no-headers")
-			}
-			if mapFormat != "" {
-				extra = append(extra, "--format", mapFormat)
-			}
-			if mapOutput != "" {
-				f, err := os.Create(mapOutput)
-				if err != nil {
-					return fmt.Errorf("create output file: %w", err)
+				if mapNoHeaders {
+					extra = append(extra, "--no-headers")
 				}
-				defer f.Close()
-				return flow.RunInKindTo("map", f, extra...)
-			}
-			return flow.RunInKind("map", extra...)
+				if mapFormat != "" {
+					extra = append(extra, "--format", mapFormat)
+				}
+				if mapOutput != "" {
+					f, err := os.Create(mapOutput)
+					if err != nil {
+						return fmt.Errorf("create output file: %w", err)
+					}
+					defer f.Close()
+					return flow.RunInKindTo("map", f, extra...)
+				}
+				return flow.RunInKind("map", extra...)
 			}
 			return err
 		}

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -148,6 +149,69 @@ func RunInKind(subcommand string, extraArgs ...string) error {
 		return cmd.Run()
 	}
 	return lastErr
+}
+
+// RunAgentInKind deploys both the aggregator and agent inside the same kind node
+// so they can communicate via localhost. Used when the local user lacks eBPF
+// privileges and the aggregator address is loopback-unreachable from kind containers.
+func RunAgentInKind(nodeName string, interval time.Duration, aggregatorAddr string) error {
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("eBPF requires privileges but cannot detect binary path: %w", err)
+	}
+
+	if _, err := exec.LookPath("docker"); err != nil {
+		return fmt.Errorf("eBPF requires privileges: run as root or use: sudo setcap cap_bpf,cap_net_admin,cap_perfmon,cap_ipc_lock+eip %s", self)
+	}
+
+	nodes, err := listKindNodes()
+	if err != nil || len(nodes) == 0 {
+		return fmt.Errorf("kind cluster not found: start a kind cluster and try again")
+	}
+	nodes = preferWorkers(nodes)
+	node := nodes[0]
+
+	data, err := os.ReadFile(self)
+	if err != nil {
+		return fmt.Errorf("read binary: %w", err)
+	}
+	if err := copyToNode(node, data); err != nil {
+		return fmt.Errorf("copy binary to kind node: %w", err)
+	}
+
+	// Stop any previous aggregator/agent inside the node.
+	_ = exec.Command("docker", "exec", node, "pkill", "-9", "-f", "kubectl-detective").Run()
+	time.Sleep(500 * time.Millisecond)
+
+	// Preserve the user's requested port so the in-kind aggregator matches expectations.
+	_, port, _ := net.SplitHostPort(aggregatorAddr)
+	if port == "" {
+		port = "50051"
+	}
+	inNodeAgg := "localhost:" + port
+
+	// Start aggregator inside the kind node in the background.
+	aggArgs := fmt.Sprintf("nohup /usr/local/bin/kubectl-detective aggregator --listen=%s >/dev/null 2>&1 &", inNodeAgg)
+	if err := exec.Command("docker", "exec", "-d", node, "sh", "-c", aggArgs).Run(); err != nil {
+		return fmt.Errorf("start aggregator in kind: %w", err)
+	}
+	time.Sleep(1 * time.Second)
+
+	// Start the agent inside the same node.
+	agentArgs := []string{"exec", "-i", node, "/usr/local/bin/kubectl-detective", "agent",
+		"--aggregator", inNodeAgg,
+		"--interval", interval.String(),
+	}
+	if nodeName != "" {
+		agentArgs = append(agentArgs, "--node", nodeName)
+	}
+
+	fmt.Fprintf(os.Stderr, "agent (kind): localhost is unreachable from kind containers; running aggregator + agent inside %s on %s\n", node, inNodeAgg)
+	cmd := exec.Command("docker", agentArgs...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func copyToNode(node string, data []byte) error {
