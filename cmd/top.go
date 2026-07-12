@@ -36,36 +36,39 @@ Default output shows per-connection top talkers. Use --endpoints for per-endpoin
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := flow.NewCollector()
 		if err != nil {
-			if err == flow.ErrNoPrivileges {
-				var extra []string
-				if topDuration > 0 {
-					extra = append(extra, "--duration", topDuration.String())
-				}
-				if topNoResolve {
-					extra = append(extra, "-n")
-				}
-				if topResolvePod {
-					extra = append(extra, "--pod")
-				}
-				if topByEndpoint {
-					extra = append(extra, "--endpoints")
-				}
-				if topNoHeaders {
-					extra = append(extra, "--no-headers")
-				}
-				if topUnitMB {
-					extra = append(extra, "-M")
-				}
-				if topUnitKB {
-					extra = append(extra, "-K")
-				}
-				if topUnitB {
-					extra = append(extra, "-B")
-				}
-				if topWatch {
-					extra = append(extra, "-w")
-				}
-				return flow.RunInKind("top", extra...)
+		if err == flow.ErrNoPrivileges {
+			var extra []string
+			if topDuration > 0 {
+				extra = append(extra, "--duration", topDuration.String())
+			}
+			if topNoResolve {
+				extra = append(extra, "-n")
+			}
+			if topResolvePod {
+				extra = append(extra, "--pod")
+			}
+			if topResolveSvc {
+				extra = append(extra, "--svc")
+			}
+			if topByEndpoint {
+				extra = append(extra, "--endpoints")
+			}
+			if topNoHeaders {
+				extra = append(extra, "--no-headers")
+			}
+			if topUnitMB {
+				extra = append(extra, "-M")
+			}
+			if topUnitKB {
+				extra = append(extra, "-K")
+			}
+			if topUnitB {
+				extra = append(extra, "-B")
+			}
+			if topWatch {
+				extra = append(extra, "-w")
+			}
+			return flow.RunInKind("top", extra...)
 			}
 			return err
 		}
@@ -105,6 +108,7 @@ Default output shows per-connection top talkers. Use --endpoints for per-endpoin
 
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt)
+		defer signal.Stop(sig)
 
 		tracker := throughput.New()
 
@@ -124,19 +128,6 @@ Default output shows per-connection top talkers. Use --endpoints for per-endpoin
 					break loop
 				default:
 				}
-				ev, err := c.Read()
-				if err != nil {
-					return err
-				}
-				_ = ev
-			}
-		} else {
-			fmt.Fprintln(log, "Collecting throughput... Press Ctrl+C to stop.")
-			go func() {
-				<-sig
-				c.Close()
-			}()
-			for {
 				ev, err := c.Read()
 				if err != nil {
 					return err
@@ -191,6 +182,15 @@ Default output shows per-connection top talkers. Use --endpoints for per-endpoin
 }
 
 func runWatch(c *flow.Collector, r resolver.Resolver, tracker *throughput.Tracker, sig <-chan os.Signal) error {
+	go func() {
+		for {
+			_, err := c.Read()
+			if err != nil {
+				return
+			}
+		}
+	}()
+
 	if err := tracker.Watch(c); err != nil {
 		return fmt.Errorf("initial watch: %w", err)
 	}
@@ -247,13 +247,14 @@ func runWatch(c *flow.Collector, r resolver.Resolver, tracker *throughput.Tracke
 				fmt.Print("\033[2J\033[H" + throughput.FormatTalkers(talkers, elapsed, u))
 			}
 		case <-sig:
+			fmt.Println()
 			return nil
 		}
 	}
 }
 
 func init() {
-	topCmd.Flags().DurationVarP(&topDuration, "duration", "d", 10*time.Second, "Collection duration (0 = continuous)")
+	topCmd.Flags().DurationVarP(&topDuration, "duration", "d", 10*time.Second, "Collection duration")
 	topCmd.Flags().BoolVarP(&topNoResolve, "no-resolve", "n", false, "Skip name resolution (show IPs only)")
 	topCmd.Flags().BoolVarP(&topResolvePod, "pod", "", false, "Resolve IPs to Pod names")
 	topCmd.Flags().BoolVarP(&topResolveSvc, "svc", "", false, "Resolve IPs to Service names")

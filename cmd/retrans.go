@@ -94,6 +94,7 @@ Use -w for live updating display (like Linux top).`,
 
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt)
+		defer signal.Stop(sig)
 
 		if retransWatch {
 			return runWatchRetrans(c, r, sig, log)

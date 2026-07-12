@@ -20,9 +20,6 @@ frontend → api → redis
 | `kubectl detective retrans` | Show TCP retransmission ranking |
 | `kubectl detective latency` | Show Pod-to-Pod TCP latency (RTT) ranking |
 | `kubectl detective dns` | Show DNS query latency statistics |
-| `kubectl detective pods` | List pods in the cluster |
-| `kubectl detective services` | List services in the cluster |
-| `kubectl detective endpointslices` | List EndpointSlices in the cluster |
 | `kubectl detective status` | Show cluster-wide network status |
 | `kubectl detective agent` | Run the eBPF agent on a node (DaemonSet) |
 | `kubectl detective aggregator` | Run the gRPC aggregator server |
@@ -56,42 +53,57 @@ make install
 
 ## Usage
 
+All data-collection commands share a consistent interface:
+
+- **Default**: Collects for 10 seconds (`-d`), then exits with a summary.
+- **`-w` (watch)**: Continuous display. `Ctrl+D` shows results and exits; `Ctrl+C` exits immediately.
+- **`-n`**: Skip Kubernetes name resolution (show IPs only).
+- **`--pod`**: Resolve to Pod names only.
+- **`--svc`**: Resolve to Service names only (default).
+- **`--no-headers`**: Suppress progress messages (useful for piping).
+
 ### Real-time Flow Capture
 
 ```bash
-# Show TCP flows with service name resolution
+# Show TCP flows (10 second capture)
 kubectl detective flows
+
+# Continuous display (Ctrl+D or Ctrl+C to stop)
+kubectl detective flows -w
 
 # Show raw IPs (no Kubernetes resolution)
 kubectl detective flows -n
 
-# Resolve to Pod names only
-kubectl detective flows --pod
+# Capture for 30 seconds
+kubectl detective flows -d 30s
 ```
 
 ### Service Dependency Map
 
 ```bash
 # ASCII art dependency map (10 second capture)
-kubectl detective map -d 10s
+kubectl detective map
+
+# Continuous collection (Ctrl+D to show map, Ctrl+C to quit)
+kubectl detective map -w
 
 # Mermaid diagram
 kubectl detective map -f mermaid
 
 # HTML report
-kubectl detective map -f html -o report.html
+kubectl detective map -f html -F report.html
 
 # CSV export
-kubectl detective map -f csv -o flows.csv
+kubectl detective map -f csv -F flows.csv
 ```
 
 ### Throughput Monitoring
 
 ```bash
-# Top talkers for 30 seconds
-kubectl detective top -d 30s
+# Top talkers (10 second capture)
+kubectl detective top
 
-# Live updating display
+# Continuous display (Ctrl+D or Ctrl+C to stop)
 kubectl detective top -w
 
 # Per-endpoint aggregation
@@ -104,30 +116,30 @@ kubectl detective top -M  # MB
 ### Retransmission Analysis
 
 ```bash
-# Retransmission ranking
-kubectl detective retrans -d 30s
+# Retransmission ranking (10 second capture)
+kubectl detective retrans
 
-# Live watch mode
+# Continuous display (Ctrl+D or Ctrl+C to stop)
 kubectl detective retrans -w
 ```
 
 ### Latency Monitoring
 
 ```bash
-# RTT latency with p95/p99
-kubectl detective latency -d 30s
+# RTT latency with p95/p99 (10 second capture)
+kubectl detective latency
 
-# Live watch mode
+# Continuous display (Ctrl+D or Ctrl+C to stop)
 kubectl detective latency -w
 ```
 
 ### DNS Analysis
 
 ```bash
-# DNS query latency
-kubectl detective dns -d 30s
+# DNS query latency (10 second capture)
+kubectl detective dns
 
-# Live watch mode
+# Continuous display (Ctrl+D or Ctrl+C to stop)
 kubectl detective dns -w
 ```
 
@@ -213,13 +225,13 @@ kubectl detective map -f ascii
 kubectl detective map -f mermaid
 
 # CSV
-kubectl detective map -f csv -o output.csv
+kubectl detective map -f csv -F output.csv
 
 # JSON
-kubectl detective map -f json -o output.json
+kubectl detective map -f json -F output.json
 
 # HTML report
-kubectl detective map -f html -o output.html
+kubectl detective map -f html -F output.html
 ```
 
 ## License

@@ -23,8 +23,9 @@ var (
 	mapResolveSvc bool
 	mapDuration   time.Duration
 	mapNoHeaders  bool
+	mapWatch      bool
 	mapFormat     string
-	mapOutput     string
+	mapFile       string
 )
 
 var mapCmd = &cobra.Command{
@@ -33,7 +34,8 @@ var mapCmd = &cobra.Command{
 	Long: `Collect TCP flows and display a service dependency map.
 Default output is ASCII art.
 Use --format to export as csv, json, html, mermaid, or ascii.
-Use --output (-o) to write to a file instead of stdout.
+Use --file (-F) to write to a file instead of stdout.
+Use -w for continuous collection (Ctrl+D to show results, Ctrl+C to quit).
 Use --no-headers to suppress progress messages (useful for file redirect).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := flow.NewCollector()
@@ -46,17 +48,23 @@ Use --no-headers to suppress progress messages (useful for file redirect).`,
 				if mapResolvePod {
 					extra = append(extra, "--pod")
 				}
-				if mapDuration > 0 {
+				if mapResolveSvc {
+					extra = append(extra, "--svc")
+				}
+				if mapDuration > 0 && !mapWatch {
 					extra = append(extra, "--duration", mapDuration.String())
 				}
 				if mapNoHeaders {
 					extra = append(extra, "--no-headers")
 				}
+				if mapWatch {
+					extra = append(extra, "-w")
+				}
 				if mapFormat != "" {
 					extra = append(extra, "--format", mapFormat)
 				}
-				if mapOutput != "" {
-					f, err := os.Create(mapOutput)
+				if mapFile != "" {
+					f, err := os.Create(mapFile)
 					if err != nil {
 						return fmt.Errorf("create output file: %w", err)
 					}
@@ -97,12 +105,18 @@ Use --no-headers to suppress progress messages (useful for file redirect).`,
 		}
 		defer r.Close()
 
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, os.Interrupt)
-
 		g := graph.New()
 
-		if mapDuration > 0 {
+		if mapWatch {
+			interrupted := runMapWatch(c, r, g, log)
+			if interrupted {
+				return nil
+			}
+		} else if mapDuration > 0 {
+			sig := make(chan os.Signal, 1)
+			signal.Notify(sig, os.Interrupt)
+			defer signal.Stop(sig)
+
 			fmt.Fprintf(log, "Collecting flows for %s...\n", mapDuration)
 			timer := time.After(mapDuration)
 		loop:
@@ -123,22 +137,6 @@ Use --no-headers to suppress progress messages (useful for file redirect).`,
 					r.Resolve(ev.DstIP),
 				)
 			}
-		} else {
-			fmt.Fprintln(log, "Collecting flows... Press Ctrl+C to stop.")
-			go func() {
-				<-sig
-				c.Close()
-			}()
-			for {
-				ev, err := c.Read()
-				if err != nil {
-					return err
-				}
-				g.AddEdge(
-					r.Resolve(ev.SrcIP),
-					r.Resolve(ev.DstIP),
-				)
-			}
 		}
 
 		format := resolveMapFormat()
@@ -146,14 +144,14 @@ Use --no-headers to suppress progress messages (useful for file redirect).`,
 		rpt := export.NewReport(g, mapDuration)
 
 		var out io.Writer = os.Stdout
-		if mapOutput != "" {
-			f, err := os.Create(mapOutput)
+		if mapFile != "" {
+			f, err := os.Create(mapFile)
 			if err != nil {
 				return fmt.Errorf("create output file: %w", err)
 			}
 			defer f.Close()
 			out = f
-			fmt.Fprintf(log, "Writing %s to %s\n", format, mapOutput)
+			fmt.Fprintf(log, "Writing %s to %s\n", format, mapFile)
 		}
 
 		switch format {
@@ -167,13 +165,49 @@ Use --no-headers to suppress progress messages (useful for file redirect).`,
 			_, err := fmt.Fprint(out, g.Mermaid())
 			return err
 		default:
-			if !mapNoHeaders && mapOutput == "" {
+			if !mapNoHeaders && mapFile == "" {
 				fmt.Fprint(out, "Service Map\n═══════════\n\n")
 			}
 			_, err := fmt.Fprint(out, g.ASCII())
 			return err
 		}
 	},
+}
+
+// runMapWatch collects flows continuously. Returns true if interrupted by Ctrl+C.
+func runMapWatch(c *flow.Collector, r resolver.Resolver, g *graph.Graph, log io.Writer) bool {
+	if !mapNoHeaders {
+		fmt.Fprintln(log, "Collecting flows... Ctrl+D to show results, Ctrl+C to quit.")
+	}
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt)
+	defer signal.Stop(sig)
+
+	done := make(chan struct{})
+	go func() {
+		buf := make([]byte, 1)
+		os.Stdin.Read(buf)
+		close(done)
+	}()
+
+	for {
+		select {
+		case <-sig:
+			return true
+		case <-done:
+			return false
+		default:
+		}
+		ev, err := c.Read()
+		if err != nil {
+			return false
+		}
+		g.AddEdge(
+			r.Resolve(ev.SrcIP),
+			r.Resolve(ev.DstIP),
+		)
+	}
 }
 
 func resolveMapFormat() string {
@@ -186,11 +220,12 @@ func resolveMapFormat() string {
 
 func init() {
 	mapCmd.Flags().StringVarP(&mapFormat, "format", "f", "", "Output format: ascii, mermaid, csv, json, html (default: ascii)")
-	mapCmd.Flags().StringVarP(&mapOutput, "output", "o", "", "Write output to file instead of stdout")
+	mapCmd.Flags().StringVarP(&mapFile, "file", "F", "", "Write output to file instead of stdout")
 	mapCmd.Flags().BoolVarP(&mapNoHeaders, "no-headers", "", false, "Suppress progress messages")
 	mapCmd.Flags().BoolVarP(&mapNoResolve, "no-resolve", "n", false, "Skip name resolution (show IPs only)")
 	mapCmd.Flags().BoolVarP(&mapResolvePod, "pod", "", false, "Resolve IPs to Pod names")
 	mapCmd.Flags().BoolVarP(&mapResolveSvc, "svc", "", false, "Resolve IPs to Service names")
-	mapCmd.Flags().DurationVarP(&mapDuration, "duration", "d", 10*time.Second, "Collection duration (0 = continuous)")
+	mapCmd.Flags().BoolVarP(&mapWatch, "watch", "w", false, "Continuous collection (Ctrl+D to show, Ctrl+C to quit)")
+	mapCmd.Flags().DurationVarP(&mapDuration, "duration", "d", 10*time.Second, "Collection duration")
 	rootCmd.AddCommand(mapCmd)
 }
