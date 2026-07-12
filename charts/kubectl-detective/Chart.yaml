@@ -1,0 +1,19 @@
+apiVersion: v2
+name: kubectl-detective
+description: Kubernetes network diagnostic tool using eBPF
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - kubectl
+  - detective
+  - ebpf
+  - network
+  - diagnostic
+  - debugging
+home: https://github.com/kubernetes-sigs/kubectl-detective
+sources:
+  - https://github.com/kubernetes-sigs/kubectl-detective
+maintainers:
+  - name: kubectl-detective contributors
+license: MIT

@@ -1,0 +1,64 @@
+# -- Override the namespace for all resources
+namespaceOverride: ""
+
+# -- Image configuration
+image:
+  repository: ghcr.io/kubernetes-sigs/kubectl-detective
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets
+imagePullSecrets: []
+
+# -- Aggregator settings
+aggregator:
+  enabled: true
+  replicaCount: 1
+  listenPort: 50051
+  service:
+    type: ClusterIP
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  livenessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 30
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# -- Agent settings
+agent:
+  enabled: true
+  interval: 5s
+  tolerations:
+    - operator: Exists
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# -- ServiceAccount settings
+serviceAccount:
+  create: true
+  name: detective-aggregator
+  annotations: {}
+
+# -- Pod annotations
+podAnnotations: {}
+
+# -- Pod security context
+podSecurityContext: {}
+
+# -- Node selector
+nodeSelector: {}
+
+# -- Extra environment variables for the aggregator
+extraEnv: []

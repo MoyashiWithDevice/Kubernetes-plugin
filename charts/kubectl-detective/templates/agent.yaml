@@ -1,0 +1,55 @@
+{{- if .Values.agent.enabled -}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: detective-agent
+  namespace: {{ include "kubectl-detective.namespace" . }}
+  labels:
+    {{- include "kubectl-detective.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent
+spec:
+  selector:
+    matchLabels:
+      {{- include "kubectl-detective.agentSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kubectl-detective.agentSelectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /usr/local/bin/kubectl-detective
+            - agent
+            - --aggregator=detective-aggregator.{{ include "kubectl-detective.namespace" . }}.svc.cluster.local:{{ .Values.aggregator.listenPort }}
+            - --interval={{ .Values.agent.interval }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - BPF
+                - NET_ADMIN
+                - PERFMON
+                - IPC_LOCK
+          resources:
+            {{- toYaml .Values.agent.resources | nindent 12 }}
+      {{- with .Values.agent.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 5
+{{- end }}

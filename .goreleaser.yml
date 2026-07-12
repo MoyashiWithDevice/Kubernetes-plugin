@@ -1,0 +1,101 @@
+version: 2
+
+project_name: kubectl-detective
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: kubectl-detective
+    main: .
+    binary: kubectl-detective
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+dockers:
+  - image_templates:
+      - "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}-amd64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title=kubectl-detective"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/kubernetes-sigs/kubectl-detective"
+    dockerfile: Dockerfile
+
+  - image_templates:
+      - "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}-arm64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title=kubectl-detective"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/kubernetes-sigs/kubectl-detective"
+    dockerfile: Dockerfile
+
+docker_manifests:
+  - name_template: "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}-amd64"
+      - "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/kubernetes-sigs/kubectl-detective:latest"
+    image_templates:
+      - "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}-amd64"
+      - "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}-arm64"
+
+release:
+  github:
+    owner: kubernetes-sigs
+    name: kubectl-detective
+  draft: false
+  prerelease: auto
+  name_template: "v{{ .Version }}"
+
+helm:
+  - name: kubectl-detective
+    directory: charts/kubectl-detective
+    app_version: "{{ .Version }}"
+    version: "{{ .Version }}"
+    publish: true
+    private: false

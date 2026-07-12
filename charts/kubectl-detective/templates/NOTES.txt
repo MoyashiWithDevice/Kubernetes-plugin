@@ -1,0 +1,25 @@
+kubectl-detective has been installed!
+
+Namespace: {{ include "kubectl-detective.namespace" . }}
+
+{{- if .Values.aggregator.enabled }}
+
+Aggregator:
+  kubectl get deployment detective-aggregator -n {{ include "kubectl-detective.namespace" . }}
+  kubectl port-forward svc/detective-aggregator 50051:{{ .Values.aggregator.listenPort }} -n {{ include "kubectl-detective.namespace" . }}
+{{- end }}
+
+{{- if .Values.agent.enabled }}
+
+Agent:
+  kubectl get daemonset detective-agent -n {{ include "kubectl-detective.namespace" . }}
+{{- end }}
+
+Usage:
+  kubectl detective status
+  kubectl detective flows
+  kubectl detective map -d 10s
+  kubectl detective top -d 30s
+  kubectl detective retrans -d 30s
+  kubectl detective latency -d 30s
+  kubectl detective dns -d 30s
