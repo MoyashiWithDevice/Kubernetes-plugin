@@ -3,7 +3,7 @@ namespaceOverride: ""
 
 # -- Image configuration
 image:
-  repository: ghcr.io/kubernetes-sigs/kubectl-detective
+  repository: ghcr.io/moyashiwithdevice/kubectl-detective
   tag: ""
   pullPolicy: IfNotPresent
 

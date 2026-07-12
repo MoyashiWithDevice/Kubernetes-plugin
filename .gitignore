@@ -40,5 +40,8 @@ dist/
 # kind cluster state
 kind-state/
 
+# Helm packaged charts
+charts/*.tgz
+
 # Protoc generated zip
 protoc-*.zip

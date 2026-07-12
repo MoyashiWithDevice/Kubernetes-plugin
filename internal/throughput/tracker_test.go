@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"Kubernetes-plugin/internal/flow"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/flow"
 )
 
 type stubResolver struct{}

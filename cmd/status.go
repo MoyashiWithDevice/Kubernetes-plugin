@@ -7,8 +7,8 @@ import (
 	"net"
 	"time"
 
-	detectivev1 "Kubernetes-plugin/api/detective/v1"
-	"Kubernetes-plugin/internal/flow"
+	detectivev1 "github.com/moyashiwithdevice/kubectl-detective/api/detective/v1"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/flow"
 
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"

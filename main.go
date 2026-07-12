@@ -1,6 +1,6 @@
 package main
 
-import "Kubernetes-plugin/cmd"
+import "github.com/moyashiwithdevice/kubectl-detective/cmd"
 
 func main() {
 	cmd.Execute()

@@ -7,10 +7,10 @@ import (
 	"os/signal"
 	"time"
 
-	"Kubernetes-plugin/internal/flow"
-	"Kubernetes-plugin/internal/kubernetes"
-	"Kubernetes-plugin/internal/latency"
-	"Kubernetes-plugin/internal/resolver"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/flow"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/kubernetes"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/latency"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/resolver"
 
 	"github.com/spf13/cobra"
 )

@@ -3,7 +3,7 @@ package export
 import (
 	"time"
 
-	"Kubernetes-plugin/internal/graph"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/graph"
 )
 
 type Report struct {

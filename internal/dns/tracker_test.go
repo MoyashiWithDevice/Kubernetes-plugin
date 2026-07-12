@@ -3,8 +3,8 @@ package dns
 import (
 	"testing"
 
-	"Kubernetes-plugin/internal/flow"
-	"Kubernetes-plugin/internal/resolver"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/flow"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/resolver"
 )
 
 type fakeDNSReader struct {

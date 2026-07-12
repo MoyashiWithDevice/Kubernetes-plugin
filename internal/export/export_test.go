@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"Kubernetes-plugin/internal/graph"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/graph"
 )
 
 func testReport() *Report {

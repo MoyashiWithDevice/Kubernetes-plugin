@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	detectivev1 "Kubernetes-plugin/api/detective/v1"
-	"Kubernetes-plugin/internal/flow"
+	detectivev1 "github.com/moyashiwithdevice/kubectl-detective/api/detective/v1"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/flow"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

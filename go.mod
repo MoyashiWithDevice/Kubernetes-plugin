@@ -1,4 +1,4 @@
-module Kubernetes-plugin
+module github.com/moyashiwithdevice/kubectl-detective
 
 go 1.26.0
 

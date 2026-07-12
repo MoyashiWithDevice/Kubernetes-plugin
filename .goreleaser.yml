@@ -29,7 +29,7 @@ archives:
   - id: default
     format: tar.gz
     name_template: >-
-      {{ .ProjectName }}_{{ .Os }}_{{ .Arch }}
+      {{ .ProjectName }}_{{ title .Os }}_{{ .Arch }}
     format_overrides:
       - goos: windows
         format: zip
@@ -54,39 +54,39 @@ changelog:
 
 dockers:
   - image_templates:
-      - "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}-amd64"
+      - "ghcr.io/moyashiwithdevice/kubectl-detective:{{ .Version }}-amd64"
     use: buildx
     build_flag_templates:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.title=kubectl-detective"
       - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.source=https://github.com/kubernetes-sigs/kubectl-detective"
+      - "--label=org.opencontainers.image.source=https://github.com/moyashiwithdevice/kubectl-detective"
     dockerfile: Dockerfile
 
   - image_templates:
-      - "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}-arm64"
+      - "ghcr.io/moyashiwithdevice/kubectl-detective:{{ .Version }}-arm64"
     use: buildx
     build_flag_templates:
       - "--platform=linux/arm64"
       - "--label=org.opencontainers.image.title=kubectl-detective"
       - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.source=https://github.com/kubernetes-sigs/kubectl-detective"
+      - "--label=org.opencontainers.image.source=https://github.com/moyashiwithdevice/kubectl-detective"
     dockerfile: Dockerfile
 
 docker_manifests:
-  - name_template: "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}"
+  - name_template: "ghcr.io/moyashiwithdevice/kubectl-detective:{{ .Version }}"
     image_templates:
-      - "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}-amd64"
-      - "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}-arm64"
+      - "ghcr.io/moyashiwithdevice/kubectl-detective:{{ .Version }}-amd64"
+      - "ghcr.io/moyashiwithdevice/kubectl-detective:{{ .Version }}-arm64"
 
-  - name_template: "ghcr.io/kubernetes-sigs/kubectl-detective:latest"
+  - name_template: "ghcr.io/moyashiwithdevice/kubectl-detective:latest"
     image_templates:
-      - "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}-amd64"
-      - "ghcr.io/kubernetes-sigs/kubectl-detective:{{ .Version }}-arm64"
+      - "ghcr.io/moyashiwithdevice/kubectl-detective:{{ .Version }}-amd64"
+      - "ghcr.io/moyashiwithdevice/kubectl-detective:{{ .Version }}-arm64"
 
 release:
   github:
-    owner: kubernetes-sigs
+    owner: moyashiwithdevice
     name: kubectl-detective
   draft: false
   prerelease: auto
@@ -94,7 +94,7 @@ release:
 
 helm:
   - name: kubectl-detective
-    directory: charts/kubectl-detective
+    directory: charts
     app_version: "{{ .Version }}"
     version: "{{ .Version }}"
     publish: true

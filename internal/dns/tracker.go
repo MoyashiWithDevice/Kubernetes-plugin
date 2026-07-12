@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"Kubernetes-plugin/internal/flow"
-	"Kubernetes-plugin/internal/latency"
-	"Kubernetes-plugin/internal/resolver"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/flow"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/latency"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/resolver"
 )
 
 type DNSStatsReader interface {

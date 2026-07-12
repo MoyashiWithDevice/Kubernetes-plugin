@@ -1,7 +1,7 @@
 # kubectl-detective
 
-[![CI](https://github.com/kubernetes-sigs/kubectl-detective/actions/workflows/ci.yml/badge.svg)](https://github.com/kubernetes-sigs/kubectl-detective/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/kubernetes-sigs/kubectl-detective)](https://github.com/kubernetes-sigs/kubectl-detective/releases)
+[![CI](https://github.com/moyashiwithdevice/kubectl-detective/actions/workflows/ci.yml/badge.svg)](https://github.com/moyashiwithdevice/kubectl-detective/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/moyashiwithdevice/kubectl-detective)](https://github.com/moyashiwithdevice/kubectl-detective/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Kubernetes network diagnostic tool using eBPF. Capture TCP flows, visualize service dependencies, and monitor network health in real-time.
@@ -30,7 +30,7 @@ frontend → api → redis
 
 ```bash
 # Binary (Linux/macOS/Windows)
-curl -sL https://github.com/kubernetes-sigs/kubectl-detective/releases/latest/download/kubectl-detective_$(uname -s)_$(uname -m).tar.gz | tar xz -C /usr/local/bin kubectl-detective
+curl -sL https://github.com/moyashiwithdevice/kubectl-detective/releases/latest/download/kubectl-detective_$(uname -s)_$(uname -m).tar.gz | tar xz -C /usr/local/bin kubectl-detective
 
 # kubectl plugin
 chmod +x /usr/local/bin/kubectl-detective
@@ -39,14 +39,14 @@ chmod +x /usr/local/bin/kubectl-detective
 ### Helm Install
 
 ```bash
-helm install kubectl-detective ./charts/kubectl-detective \
+helm install kubectl-detective ./charts \
   --namespace detective --create-namespace
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/kubernetes-sigs/kubectl-detective.git
+git clone https://github.com/moyashiwithdevice/kubectl-detective.git
 cd kubectl-detective
 make install
 ```
@@ -147,7 +147,7 @@ kubectl detective dns -w
 
 ```bash
 # Deploy agent + aggregator
-helm install kubectl-detective ./charts/kubectl-detective -n detective --create-namespace
+helm install kubectl-detective ./charts -n detective --create-namespace
 
 # View cluster status
 kubectl detective status
@@ -180,6 +180,15 @@ kubectl detective status -o flows
 - **Agent**: DaemonSet running on each node. Uses eBPF to capture TCP connect events, retransmissions, RTT samples, and DNS queries. Sends periodic snapshots to the aggregator via gRPC.
 - **Aggregator**: Central Deployment that receives and aggregates metrics from all agents.
 - **CLI**: kubectl plugin that connects to the aggregator to display cluster-wide views, or runs locally with eBPF privileges for single-node analysis.
+
+## Docker Image
+
+Multi-arch images are published to GHCR:
+
+```bash
+# Pull (amd64 / arm64)
+docker pull ghcr.io/moyashiwithdevice/kubectl-detective:0.1.0
+```
 
 ## Requirements
 

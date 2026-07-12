@@ -9,8 +9,8 @@ import (
 	"os/signal"
 	"time"
 
-	"Kubernetes-plugin/internal/agent"
-	"Kubernetes-plugin/internal/flow"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/agent"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/flow"
 
 	"github.com/spf13/cobra"
 )

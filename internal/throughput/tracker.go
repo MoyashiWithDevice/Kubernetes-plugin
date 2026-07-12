@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"Kubernetes-plugin/internal/flow"
-	"Kubernetes-plugin/internal/resolver"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/flow"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/resolver"
 )
 
 type ThroughputReader interface {

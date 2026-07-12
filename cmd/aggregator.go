@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/signal"
 
-	"Kubernetes-plugin/internal/aggregator"
+	"github.com/moyashiwithdevice/kubectl-detective/internal/aggregator"
 
 	"github.com/spf13/cobra"
 )

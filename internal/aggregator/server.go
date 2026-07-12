@@ -6,7 +6,7 @@ import (
 	"net"
 	"os"
 
-	detectivev1 "Kubernetes-plugin/api/detective/v1"
+	detectivev1 "github.com/moyashiwithdevice/kubectl-detective/api/detective/v1"
 
 	"google.golang.org/grpc"
 )

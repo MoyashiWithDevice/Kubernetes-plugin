@@ -11,9 +11,8 @@ keywords:
   - network
   - diagnostic
   - debugging
-home: https://github.com/kubernetes-sigs/kubectl-detective
+home: https://github.com/moyashiwithdevice/kubectl-detective
 sources:
-  - https://github.com/kubernetes-sigs/kubectl-detective
+  - https://github.com/moyashiwithdevice/kubectl-detective
 maintainers:
   - name: kubectl-detective contributors
-license: MIT

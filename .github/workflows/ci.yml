@@ -84,7 +84,7 @@ jobs:
         uses: azure/setup-helm@v4
 
       - name: Helm lint
-        run: helm lint charts/kubectl-detective
+        run: helm lint charts
 
       - name: Helm template
-        run: helm template test charts/kubectl-detective
+        run: helm template test charts
