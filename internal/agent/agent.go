@@ -73,12 +73,11 @@ func (a *Agent) Run(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			snapshot := a.collect(c)
-			resp, err := client.SendSnapshot(ctx, &detectivev1.SnapshotRequest{Snapshot: snapshot})
+			_, err := client.SendSnapshot(ctx, &detectivev1.SnapshotRequest{Snapshot: snapshot})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "agent: send snapshot: %v\n", err)
 				continue
 			}
-			_ = resp
 		}
 	}
 }
@@ -150,5 +149,3 @@ func DefaultNodeName() string {
 	}
 	return name
 }
-
-
