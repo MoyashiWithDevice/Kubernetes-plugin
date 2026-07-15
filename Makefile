@@ -40,7 +40,7 @@ BPF_DIR=bpf
 .PHONY: bpf
 bpf:
 	docker run --rm \
-		-v $(PWD)/$(BPF_DIR):/$(BPF_DIR) \
+		-v $(CURDIR)/$(BPF_DIR):/$(BPF_DIR) \
 		-w /$(BPF_DIR) \
 		gcc:latest \
 		bash -c "apt-get update -qq && apt-get install -y -qq clang llvm libbpf-dev > /dev/null 2>&1 && \

@@ -32,17 +32,24 @@ To use `kubectl detective`, you need both the **kubectl plugin (CLI)** and the *
 - Go 1.21 or later
 - kubectl (connected to a cluster)
 - Helm 3
+- Docker (for compiling the eBPF object)
 
 ### 1. Install the kubectl Plugin (CLI)
 
 ```bash
-# Clone the repository, build, and install
+# Clone the repository
 git clone https://github.com/moyashiwithdevice/kubectl-detective.git
 cd kubectl-detective
+
+# Compile the eBPF object (requires Docker)
+make bpf
+
+# Build and install the kubectl plugin
 make install
 ```
 
-This builds the binary and copies it to `$(go env GOPATH)/bin/kubectl-detective`.
+`make bpf` compiles the eBPF program using Docker and places the object file where the Go binary expects it.
+`make install` builds the Go binary and copies it to `$(go env GOPATH)/bin/kubectl-detective`.
 
 > **Note**: Make sure `$(go env GOPATH)/bin` is in your `$PATH`.
 > Check with: `echo $PATH | tr ':' '\n' | grep "$(go env GOPATH)/bin"`
