@@ -1,6 +1,5 @@
 # kubectl-detective
 
-[![CI](https://github.com/moyashiwithdevice/kubectl-detective/actions/workflows/ci.yml/badge.svg)](https://github.com/moyashiwithdevice/kubectl-detective/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/moyashiwithdevice/kubectl-detective)](https://github.com/moyashiwithdevice/kubectl-detective/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -26,29 +25,59 @@ frontend → api → redis
 
 ## Quick Start
 
-### Install
+To use `kubectl detective`, you need both the **kubectl plugin (CLI)** and the **server-side components (aggregator + agent)**. Follow the steps below to get everything set up.
+
+### Prerequisites
+
+- Go 1.21 or later
+- kubectl (connected to a cluster)
+- Helm 3
+
+### 1. Install the kubectl Plugin (CLI)
 
 ```bash
-# Binary (Linux/macOS/Windows)
-curl -sL https://github.com/moyashiwithdevice/kubectl-detective/releases/latest/download/kubectl-detective_$(uname -s)_$(uname -m).tar.gz | tar xz -C /usr/local/bin kubectl-detective
-
-# kubectl plugin
-chmod +x /usr/local/bin/kubectl-detective
-```
-
-### Helm Install
-
-```bash
-helm install kubectl-detective ./charts \
-  --namespace detective --create-namespace
-```
-
-### From Source
-
-```bash
+# Clone the repository, build, and install
 git clone https://github.com/moyashiwithdevice/kubectl-detective.git
 cd kubectl-detective
 make install
+```
+
+This builds the binary and copies it to `$(go env GOPATH)/bin/kubectl-detective`.
+
+> **Note**: Make sure `$(go env GOPATH)/bin` is in your `$PATH`.
+> Check with: `echo $PATH | tr ':' '\n' | grep "$(go env GOPATH)/bin"`
+
+Verify the installation:
+
+```bash
+kubectl detective version
+```
+
+### 2. Deploy Server Components (Helm)
+
+```bash
+kubectl create namespace detective
+
+helm install kubectl-detective ./charts \
+  --namespace detective \
+  --set image.tag=0.1.1
+```
+
+Verify the deployment:
+
+```bash
+kubectl get pods -n detective
+kubectl logs deployment/detective-aggregator -n detective
+```
+
+### 3. Verify It Works
+
+```bash
+# Capture network flows (collects for 10 seconds, then shows a summary)
+kubectl detective flows
+
+# Show a service dependency map
+kubectl detective map
 ```
 
 ## Usage
@@ -146,8 +175,9 @@ kubectl detective dns -w
 ### Cluster-wide Status (DaemonSet Mode)
 
 ```bash
-# Deploy agent + aggregator
-helm install kubectl-detective ./charts -n detective --create-namespace
+# Deploy agent + aggregator (if not already done)
+kubectl create namespace detective
+helm install kubectl-detective ./charts -n detective --set image.tag=0.1.1
 
 # View cluster status
 kubectl detective status
@@ -183,11 +213,11 @@ kubectl detective status -o flows
 
 ## Docker Image
 
-Multi-arch images are published to GHCR:
+Multi-arch images are published to GHCR on each release:
 
 ```bash
 # Pull (amd64 / arm64)
-docker pull ghcr.io/moyashiwithdevice/kubectl-detective:0.1.0
+docker pull ghcr.io/moyashiwithdevice/kubectl-detective:0.1.1
 ```
 
 ## Requirements
