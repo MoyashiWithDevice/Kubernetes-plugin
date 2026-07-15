@@ -1,8 +1,6 @@
 BINARY_NAME=kubectl-detective
 KIND_CLUSTER_NAME=detective
-# Make の環境に GOPATH が無いと $(GOPATH)/bin が /bin になり install が失敗する
-GOPATH ?= $(shell go env GOPATH)
-INSTALL_DIR ?= $(GOPATH)/bin
+INSTALL_DIR ?= /usr/local/bin
 
 .PHONY: build
 build:

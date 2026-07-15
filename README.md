@@ -45,14 +45,11 @@ cd kubectl-detective
 make bpf
 
 # Build and install the kubectl plugin
-make install
+sudo make install
 ```
 
 `make bpf` compiles the eBPF program using Docker and places the object file where the Go binary expects it.
-`make install` builds the Go binary and copies it to `$(go env GOPATH)/bin/kubectl-detective`.
-
-> **Note**: Make sure `$(go env GOPATH)/bin` is in your `$PATH`.
-> Check with: `echo $PATH | tr ':' '\n' | grep "$(go env GOPATH)/bin"`
+`make install` builds the Go binary and copies it to `/usr/local/bin/kubectl-detective`.
 
 Verify the installation:
 
@@ -80,11 +77,11 @@ kubectl logs deployment/detective-aggregator -n detective
 ### 3. Verify It Works
 
 ```bash
-# Capture network flows (collects for 10 seconds, then shows a summary)
-kubectl detective flows
+# Cluster-wide status (no eBPF privileges required)
+kubectl detective status
 
-# Show a service dependency map
-kubectl detective map
+# Capture network flows (requires root for eBPF)
+sudo kubectl detective flows
 ```
 
 ## Usage
