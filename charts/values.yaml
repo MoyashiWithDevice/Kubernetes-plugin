@@ -3,9 +3,9 @@ namespaceOverride: ""
 
 # -- Image configuration
 image:
-  repository: ghcr.io/moyashiwithdevice/kubectl-detective
-  tag: ""
-  pullPolicy: IfNotPresent
+  repository: bababa2547/kubectl-detective
+  tag: "latest"
+  pullPolicy: Always
 
 # -- Image pull secrets
 imagePullSecrets: []

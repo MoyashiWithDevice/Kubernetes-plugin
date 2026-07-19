@@ -86,8 +86,8 @@ spec:
       serviceAccountName: detective-aggregator
       containers:
         - name: aggregator
-          image: kubectl-detective:latest
-          imagePullPolicy: IfNotPresent
+          image: bababa2547/kubectl-detective:latest
+          imagePullPolicy: Always
           command:
             - /usr/local/bin/kubectl-detective
             - aggregator

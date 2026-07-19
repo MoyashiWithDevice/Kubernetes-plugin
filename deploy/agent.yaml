@@ -22,8 +22,8 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: agent
-          image: kubectl-detective:latest
-          imagePullPolicy: IfNotPresent
+          image: bababa2547/kubectl-detective:latest
+          imagePullPolicy: Always
           command:
             - /usr/local/bin/kubectl-detective
             - agent
