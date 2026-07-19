@@ -34,7 +34,7 @@ network metrics collected from all node agents.`,
 			return runStatusDirectly(statusAddr, statusOutput)
 		}
 
-		// Auto-discover: try localhost (port-forward), then in-cluster service, then kind.
+		// Auto-discover: try localhost (port-forward), then in-cluster service.
 		if err := probeAggregator(statusAddr); err == nil {
 			return runStatusDirectly(statusAddr, statusOutput)
 		}
@@ -44,11 +44,15 @@ network metrics collected from all node agents.`,
 			return runStatusDirectly(aggAddr, statusOutput)
 		}
 
-		if !statusInKind {
+		// Last resort: kind (only if already inside kind to prevent recursion).
+		if statusInKind {
 			return runStatusInKind(statusAddr, statusOutput)
 		}
 
-		return fmt.Errorf("no reachable aggregator\n  deploy: kubectl apply -f deploy/\n  or:    kubectl port-forward -n detective svc/detective-aggregator 50051:50051")
+		return fmt.Errorf("no reachable aggregator\n" +
+			"  1. kubectl port-forward -n detective svc/detective-aggregator 50051:50051 &\n" +
+			"  2. kubectl detective status\n" +
+			"  or: sudo setcap cap_bpf,cap_net_admin,cap_perfmon,cap_ipc_lock+eip $(which kubectl-detective)")
 	},
 }
 
@@ -131,16 +135,11 @@ func runStatusDirectly(addr string, output string) error {
 }
 
 // forwardToInClusterAggregator discovers the detective-aggregator service
-// across all namespaces and sets up kubectl port-forward to it.
+// and sets up kubectl port-forward to it.
 func forwardToInClusterAggregator() (string, func(), error) {
-	nsOut, err := exec.Command("kubectl", "get", "svc", "detective-aggregator",
-		"-A", "-o", "jsonpath={.metadata.namespace}").Output()
-	if err != nil {
-		return "", nil, fmt.Errorf("aggregator service not found: %w", err)
-	}
-	namespace := strings.TrimSpace(string(nsOut))
+	namespace := findAggregatorNamespace()
 	if namespace == "" {
-		return "", nil, fmt.Errorf("aggregator service namespace is empty")
+		return "", nil, fmt.Errorf("aggregator service not found in any namespace")
 	}
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -156,13 +155,13 @@ func forwardToInClusterAggregator() (string, func(), error) {
 		"-n", namespace,
 		"svc/detective-aggregator",
 		fmt.Sprintf("%d:50051", port))
-	pf.Stdout = nil
-	pf.Stderr = nil
+	var pfErr bytes.Buffer
+	pf.Stderr = &pfErr
 	_ = pf.Start()
 
 	// Wait for the forward to become ready by probing.
-	for i := 0; i < 20; i++ {
-		time.Sleep(100 * time.Millisecond)
+	for i := 0; i < 30; i++ {
+		time.Sleep(200 * time.Millisecond)
 		if probeAggregator(aggAddr) == nil {
 			cleanup := func() { cancel(); _ = pf.Process.Kill() }
 			return aggAddr, cleanup, nil
@@ -170,7 +169,44 @@ func forwardToInClusterAggregator() (string, func(), error) {
 	}
 	cancel()
 	_ = pf.Process.Kill()
+	errMsg := strings.TrimSpace(pfErr.String())
+	if errMsg != "" {
+		return "", nil, fmt.Errorf("port-forward failed: %s", errMsg)
+	}
 	return "", nil, fmt.Errorf("port-forward did not become ready")
+}
+
+// findAggregatorNamespace discovers the namespace of detective-aggregator service.
+func findAggregatorNamespace() string {
+	// Try the default namespace first.
+	out, err := exec.Command("kubectl", "get", "svc", "detective-aggregator",
+		"-n", "detective", "-o", "jsonpath={.metadata.namespace}").Output()
+	if err == nil && strings.TrimSpace(string(out)) != "" {
+		return strings.TrimSpace(string(out))
+	}
+
+	// Search all namespaces using selector.
+	out, err = exec.Command("kubectl", "get", "svc", "-A",
+		"-l", "app.kubernetes.io/name=detective,app.kubernetes.io/component=aggregator",
+		"-o", "jsonpath={.items[0].metadata.namespace}").Output()
+	if err == nil && strings.TrimSpace(string(out)) != "" {
+		return strings.TrimSpace(string(out))
+	}
+
+	// Last resort: list all namespaces and grep.
+	out, err = exec.Command("kubectl", "get", "svc", "-A",
+		"--no-headers", "-o",
+		"custom-columns=NS:.metadata.namespace,NAME:.metadata.name").Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[1] == "detective-aggregator" {
+			return fields[0]
+		}
+	}
+	return ""
 }
 
 // runStatusInKind runs the status command inside a kind node where the
